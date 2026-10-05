@@ -60,9 +60,9 @@ robot.robotCloseAntennaLight()
 
 `robotStartExpression` une fois, puis `robotChangeExpression`. `robotStopExpression` sort du mode.
 
-La page renvoie la liste des `h00xx` vers un doc Feishu, pas dans le HTML : https://xmzone.feishu.cn/docx/RqUpd7H4woyoN8xEKfacOCDdnBh
+La liste des faces est dans [FACES.md](FACES.md), extraite du Feishu public du 14 août 2024.
 
-Tags déjà utilisés ici, relevés sur la page boutique EN du même SDK : `h0006` joyeux, `h0001` colère, `h0046` surprise, `h0134` peur, `h0211` pleurs, `h0189` à l'aise.
+Tags utilisés par GeeUIVoiceEmo, corrigés d'après ce doc : `h0006` 大笑, `h0001` 愤怒, `h0046` 惊讶, `h0133` 害怕, `h0119` 哭泣, `h0059` 常规环. `h0134` est 听歌星光, pas la peur. `h0189` est 摸头, pas un neutre.
 
 ## Action
 
