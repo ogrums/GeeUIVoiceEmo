@@ -3,10 +3,11 @@ package com.geeui.voiceemo
 import android.content.Context
 import com.leitianpai.robotsdk.RobotService
 import com.leitianpai.robotsdk.commandlib.Light
+import com.leitianpai.robotsdk.message.ActionMessage
 import com.leitianpai.robotsdk.message.AntennaLightMessage
 import com.leitianpai.robotsdk.message.AntennaMessage
 
-/** RobotSDK only. Opens the servo rail once. Does not walk and does not take the mic. */
+/** RobotSDK 2.5. Opens the servo rail once. Does not walk and does not take the mic. */
 class EmotionBus(context: Context) {
     private val robot = RobotService.getInstance(context.applicationContext)
     private var motorOn = false
@@ -35,6 +36,12 @@ class EmotionBus(context: Context) {
             lamp.set(color)
             robot.robotAntennaLight(lamp)
         }
+        if (pose.action != null) {
+            val move = ActionMessage()
+            move.set(pose.action, 3, 1)
+            robot.robotActionCommand(move)
+        }
+        if (pose.sound != null) robot.robotControlSound(pose.sound)
     }
 
     fun close() {
@@ -47,9 +54,14 @@ class EmotionBus(context: Context) {
 
     private fun light(name: String?): Int? = when (name) {
         "RED" -> Light.RED
+        "GREEN" -> Light.GREEN
         "BLUE" -> Light.BLUE
+        "ORANGE" -> Light.ORANGE
         "WHITE" -> Light.WHITE
         "YELLOW" -> Light.YELLOW
+        "PURPLE" -> Light.PURPLE
+        "CYAN" -> Light.CYAN
+        "BLACK" -> Light.BLACK
         else -> null
     }
 }

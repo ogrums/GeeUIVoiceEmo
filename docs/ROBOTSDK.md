@@ -14,7 +14,7 @@ Déposer l'AAR dans `app/libs/`. Non commité.
 
 | Version | Lien publié |
 |---|---|
-| 2.5 | https://cdn.file.letianpai.com/b765d7f0250777afe5745ddc46d0c234/RobotSDK/RobotSDK/RobotSdk-release-2.5.aar |
+| 2.5 | https://cdn.file.letianpai.com/b765d7f0250777afe5745ddc46d0c234/RobotSDK/RobotSdk-release-2.5.aar |
 | 2.2 | https://cdn.file.letianpai.com/b765d7f0250777afe5745ddc46d0c234/RobotSDK/RobotSdk-release-2.2.aar.zip |
 | 2.0 | https://cdn.file.letianpai.com/b765d7f0250777afe5745ddc46d0c234/RobotSDK/RobotSdk-release.aar.2.0.zip |
 | 1.0 | https://cdn.file.letianpai.com/b765d7f0250777afe5745ddc46d0c234/RobotSDK/RobotSdk-release.aar.1.0.zip |
@@ -47,7 +47,7 @@ robot.robotAntennaMotion(ears)
 
 ## Lumière antenne
 
-La page ne documente que `Light.RED`. Les autres constantes (`BLUE`, `WHITE`, `YELLOW`) sont celles utilisées par GeeUIVoiceEmo. Si le compile échoue, la version d'AAR n'a pas ce nom.
+La page ne montre que `Light.RED`. L'AAR 2.5, inspecté, a `RED GREEN BLUE ORANGE WHITE YELLOW PURPLE CYAN BLACK`. Pas d'autre mode que on/couleur et `robotCloseAntennaLight`.
 
 ```kotlin
 val lamp = AntennaLightMessage()
