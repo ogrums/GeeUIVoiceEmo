@@ -10,25 +10,25 @@ Nothing here calls AWS, Azure or iFlytek. The LAN box is a Ryzen AI 9 HX 470 wit
 |---|---|
 | Repo | `ogrums/GeeUIVoiceEmo`, does not modify GeeUIVoice |
 | Body | RobotSDK `RobotService`, not raw AT |
-| Scope | voice + face + ears + antenna light + mood that decays |
+| Scope | voice + face + ears + antenna light + a small gesture + a built-in sound |
 | User affect | audio classifier and transcript |
 | TTS | CosyVoice if the label is not neutral, the clause is short, and the sidecar is healthy. Else Kokoro |
 | Boot | optional |
 
 ## Body
 
-`EmotionBus` uses the same entry as DemoForRobotSDK.
+One table, `SdkMap`. `EmotionBus` applies it. Faces come from the Feishu map. Lights are the 2.5 AAR constants. Actions and sounds are the published lists. Neutral does not move and does not play a sound.
 
-| Emotion | Face | Ears `robotAntennaMotion` | Light |
-|---|---|---|---|
-| happy | `h0006` | cmd 3, step 2, 250 ms, 60° | `Light.YELLOW` |
-| sad | `h0211` | cmd 1, step 1, 500 ms, 40° | `Light.BLUE` |
-| angry | `h0001` | cmd 2, step 2, 200 ms, 70° | `Light.RED` |
-| fear | `h0134` | cmd 1, step 1, 400 ms, 30° | `Light.WHITE` |
-| surprise | `h0046` | cmd 3, step 1, 150 ms, 90° | `Light.WHITE` |
-| neutral | `h0189` | cmd 1, angle 0 | `robotCloseAntennaLight` |
+| Emotion | Face | Ears | Light | Action | Sound |
+|---|---|---|---|---|---|
+| happy | `h0006` 大笑 | cmd 3, 2 steps, 250 ms, 60° | `YELLOW` | 77 yeah | `a0032` |
+| sad | `h0119` 哭泣 | cmd 1, 1 step, 500 ms, 40° | `BLUE` | 20 rest | `a0086` |
+| angry | `h0001` 愤怒 | cmd 2, 2 steps, 200 ms, 70° | `RED` | 15 stomp | `a0020` |
+| fear | `h0133` 害怕 | cmd 1, 1 step, 400 ms, 30° | `CYAN` | 44 dodge | `a0037` |
+| surprise | `h0046` 惊讶 | cmd 3, 1 step, 150 ms, 90° | `WHITE` | 76 nod | `a0095` |
+| neutral | `h0059` 常规环 | cmd 1, angle 0 | off | none | none |
 
-`robotOpenMotor()` once. `robotStartExpression` once, then `robotChangeExpression`. Ear cmd is the SDK gesture (1 left, 2 right, 3 the demo gesture), angle clamped 0–90. No `AT+MOTORW`.
+`robotOpenMotor()` once. `robotStartExpression` once, then `robotChangeExpression`. No `AT+MOTORW`. No `robotPlayTTs`.
 
 Put `RobotSdk-release.2.5.aar` in `app/libs/` before building. It is not committed.
 

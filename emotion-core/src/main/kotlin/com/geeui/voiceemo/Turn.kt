@@ -5,7 +5,7 @@ data class EmotionTurn(
     val say: String,
     val user: Affect,
     val mood: Affect,
-    val pose: BodyPose,
+    val pose: SdkPose,
     val engine: TtsEngine,
 )
 
@@ -26,7 +26,7 @@ object EmotionPipeline {
             say = say,
             user = user,
             mood = felt,
-            pose = BodyMap.pose(shown),
+            pose = SdkMap.pose(shown),
             engine = TtsRoute.choose(say, shown, sidecarOkAt, now),
         )
     }
