@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <application
+        android:label="GeeUIVoiceEmo"
+        android:usesCleartextTraffic="true">
+        <service
+            android:name=".EmotionService"
+            android:exported="true" />
+    </application>
+</manifest>

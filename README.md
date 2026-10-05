@@ -20,7 +20,7 @@ Nothing here calls AWS, Azure or iFlytek. The LAN box is a Ryzen AI 9 HX 470 wit
 WAV of the turn  ──▶  POST /affect/audio     (emotion2vec, parallel)
 transcript       ──▶  POST /affect/text      (label from the chat JSON)
                          └─ Arbiter ──▶ Mood (half-life 45 s)
-                                    ├─ BodyPose ──▶ setExpression + EARW + LED
+                                    ├─ BodyPose ──▶ EmotionService ──▶ ILetianpaiService
                                     └─ TtsRoute ──▶ CosyVoice :13306 or Lemonade Kokoro :13305
 ```
 
@@ -36,7 +36,27 @@ Skills (`avance`, `recule`) stay in GeeUIVoice and do not update the mood.
 
 `neutral` `happy` `sad` `angry` `fear` `surprise`.
 
-Faces are RobotSDK tags, not invented ids: happy `h0006`, angry `h0001`, surprise `h0046`, fear `h0134`, sad `h0211`, neutral `h0189`. Ears are angles for servos 5 (right) and 6 (left), sent later as `AT+EARW`. LED is a color name; the AIDL payload is filled by the app adapter.
+Faces are RobotSDK tags: happy `h0006`, angry `h0001`, surprise `h0046`, fear `h0134`, sad `h0211`, neutral `h0189`. Ears are angles for servos 5 (right) and 6 (left). LED is `controlAntennaLight` on / off / twinkle. The AIDL name has no color field.
+
+## Android adapter
+
+`app/` is `com.geeui.voiceemo`. It does not open the microphone. `EmotionWire` builds the calls, `EmotionBus` binds `ILetianpaiService` the same way as GeeUIVoice `AidlBus`.
+
+| Call | Payload |
+|---|---|
+| `setExpression("controlFace", id)` | face tag |
+| `setMcuCommand("ear", "AT+MOTORW,5,0,<angle>\r\n")` | right ear, type 0 = angle |
+| `setMcuCommand("ear", "AT+MOTORW,6,0,<angle>\r\n")` | left ear |
+| `setMcuCommand("controlAntennaLight", {antenna_light})` | off, on, or twinkle |
+
+`ear` is not a name in the MCU vocab. If the service ignores it, the same AT string still has to be written on the serial path (`AT+MOTORW`). Face and antenna light use names already observed.
+
+```text
+adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e emotion sad
+adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e sidecar http://<pc>:13306
+```
+
+The poll reads `GET /mood` every 400 ms and applies only when the label changes. Needs SDK 30 to build. Copy the Gradle wrapper from GeeUIVoice.
 
 ## Sidecar
 
@@ -55,8 +75,6 @@ python3 sidecar/emo_server.py --port 13306
 
 CosyVoice itself is not vendored. Point `COSYVOICE_URL` at a local OpenAI-shaped `/audio/speech`. On non-2xx or timeout, the caller uses Lemonade Kokoro (`ff_siwis` / `af_heart`).
 
-## Kotlin
+## Kotlin core
 
-`emotion-core` is plain Kotlin, same idea as `voice-core`. Copy the Gradle wrapper from GeeUIVoice, then `./gradlew :emotion-core:test`.
-
-The Android adapter is intentionally not in this commit. It binds `ILetianpaiService` the way `AidlBus` does, and adds ear and LED. Face ids already go through `setExpression("controlFace", faceId)`.
+`emotion-core` is plain Kotlin. `./gradlew :emotion-core:test`.
