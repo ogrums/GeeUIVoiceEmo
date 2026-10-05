@@ -30,7 +30,7 @@ class EmotionService : Service() {
         if (bus == null) bus = EmotionBus(this)
         val once = intent?.getStringExtra("emotion")
         if (!once.isNullOrBlank()) {
-            bus?.apply(Emotion.parse(once))
+            applySafe(Emotion.parse(once))
             return START_STICKY
         }
         val cfg = HostConfig.from(mapOf(
@@ -58,30 +58,46 @@ class EmotionService : Service() {
     }
 
     private fun poll(base: String) {
+        var misses = 0
         while (running.get()) {
-            val label = readMood(base)
-            if (label != null && label != last) {
-                last = label
-                bus?.apply(Emotion.parse(label))
+            val label = try {
+                Retry.run { readMood(base) }
+            } catch (_: Exception) {
+                null
             }
-            Thread.sleep(400)
+            if (label == null) {
+                misses += 1
+            } else {
+                misses = 0
+                if (label != last) {
+                    last = label
+                    applySafe(Emotion.parse(label))
+                }
+            }
+            Thread.sleep(if (misses == 0) 400 else (400L * misses).coerceAtMost(5_000L))
+        }
+    }
+
+    private fun applySafe(emotion: Emotion) {
+        try {
+            bus?.apply(emotion)
+        } catch (_: Exception) {
+            // RobotSDK can drop the binder. Next poll tries again.
         }
     }
 
     private fun readMood(base: String): String? {
-        return try {
-            val conn = URL("$base/mood").openConnection() as HttpURLConnection
-            conn.connectTimeout = 1_000
-            conn.readTimeout = 1_000
-            conn.requestMethod = "GET"
-            if (conn.responseCode !in 200..299) return null
-            val raw = conn.inputStream.readBytes().toString(Charsets.UTF_8)
-            val key = "\"emotion\":"
-            val at = raw.indexOf(key)
-            if (at < 0) null else unquote(raw.substring(at + key.length).trimStart())
-        } catch (_: Exception) {
-            null
-        }
+        val conn = URL("$base/mood").openConnection() as HttpURLConnection
+        conn.connectTimeout = 1_000
+        conn.readTimeout = 1_000
+        conn.requestMethod = "GET"
+        if (conn.responseCode !in 200..299) error("mood ${conn.responseCode}")
+        val raw = conn.inputStream.readBytes().toString(Charsets.UTF_8)
+        val key = "\"emotion\":"
+        val at = raw.indexOf(key)
+        if (at < 0) return null
+        val label = unquote(raw.substring(at + key.length).trimStart())
+        return label.ifEmpty { null }
     }
 
     private fun unquote(raw: String): String {

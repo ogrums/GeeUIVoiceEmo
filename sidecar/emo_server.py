@@ -107,10 +107,15 @@ def audio_vote(wav):
         tmp.write(wav)
         path = tmp.name
     try:
-        out = subprocess.check_output(cmd.split() + [path], timeout=3, text=True)
-        parts = out.split()
-        return parse_label(parts[0]), float(parts[1]) if len(parts) > 1 else 0.5
-    except (subprocess.SubprocessError, ValueError, IndexError):
+        last = None
+        for attempt in range(3):
+            try:
+                out = subprocess.check_output(cmd.split() + [path], timeout=3, text=True)
+                parts = out.split()
+                return parse_label(parts[0]), float(parts[1]) if len(parts) > 1 else 0.5
+            except (subprocess.SubprocessError, ValueError, IndexError) as exc:
+                last = exc
+                time.sleep(0.2 * (attempt + 1))
         return "neutral", 0.0
     finally:
         os.unlink(path)
@@ -126,6 +131,12 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
+        try:
+            self._get()
+        except Exception as exc:
+            self._json(500, {"error": type(exc).__name__})
+
+    def _get(self):
         path = self.path.split("?")[0]
         if path == "/config":
             self._json(200, config())
@@ -138,6 +149,12 @@ class Handler(BaseHTTPRequestHandler):
         self._json(200, {"emotion": mood["emotion"], "intensity": round(mood["intensity"], 3)})
 
     def do_POST(self):
+        try:
+            self._post()
+        except Exception as exc:
+            self._json(500, {"error": type(exc).__name__})
+
+    def _post(self):
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length)
         path = self.path.split("?")[0]
