@@ -39,14 +39,25 @@ adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e sidecar http:
 
 ## Sidecar
 
-`python3 sidecar/emo_server.py --port 13306`
+`python3 sidecar/emo_server.py`. Blank env falls back to the default.
 
-| Call | Body |
+| Variable | Default |
 |---|---|
-| `POST /affect/text` | `{"label":"sad","confidence":0.8}` |
-| `POST /affect/audio` | wav bytes, or neutral if `EMO_AUDIO_CMD` is unset |
-| `GET /mood` | label + intensity |
-| `POST /route` | `kokoro` or `cosyvoice` |
+| `EMO_HOST` | `0.0.0.0` |
+| `EMO_PORT` | `13306` |
+| `LEMONADE_HOST` | `http://127.0.0.1:13305` |
+| `KOKORO_MODEL` | `kokoro` |
+| `KOKORO_VOICE_FR` | `ff_siwis` |
+| `KOKORO_VOICE_EN` | `af_heart` |
+| `COSYVOICE_HOST` | empty, so CosyVoice stays off |
+| `COSYVOICE_MODEL` | `cosyvoice2` |
+| `EMO_AUDIO_CMD` | empty, audio vote is neutral |
+| `EMO_AUDIO_MODEL` | `emotion2vec` |
+| `EMO_CHAT_MODEL` | `llama` |
+
+`GET /config` returns the resolved values. `POST /route` returns `engine`, `host`, `model` and `voice`. CosyVoice is chosen only if `COSYVOICE_HOST` is set, the label is not neutral, and the clause is at most 180 characters. Otherwise Kokoro on Lemonade.
+
+The Android service takes the same names as extras (`sidecar`, `lemonade`, `cosyvoice`, …). An empty extra uses the default.
 
 ## Core
 

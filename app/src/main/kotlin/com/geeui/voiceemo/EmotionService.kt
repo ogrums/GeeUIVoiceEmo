@@ -33,9 +33,19 @@ class EmotionService : Service() {
             bus?.apply(Emotion.parse(once))
             return START_STICKY
         }
-        val sidecar = intent?.getStringExtra("sidecar") ?: return START_STICKY
+        val cfg = HostConfig.from(mapOf(
+            "sidecar" to intent?.getStringExtra("sidecar"),
+            "lemonade" to intent?.getStringExtra("lemonade"),
+            "kokoro" to intent?.getStringExtra("kokoro"),
+            "voice_fr" to intent?.getStringExtra("voice_fr"),
+            "voice_en" to intent?.getStringExtra("voice_en"),
+            "cosyvoice" to intent?.getStringExtra("cosyvoice"),
+            "cosy_model" to intent?.getStringExtra("cosy_model"),
+            "audio_model" to intent?.getStringExtra("audio_model"),
+            "chat_model" to intent?.getStringExtra("chat_model"),
+        ))
         if (running.compareAndSet(false, true)) {
-            pool.execute { poll(sidecar.trimEnd('/')) }
+            pool.execute { poll(cfg.sidecar) }
         }
         return START_STICKY
     }

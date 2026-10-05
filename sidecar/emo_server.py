@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Mood and TTS route for GeeUIVoice. Stdlib only.
+"""Mood, route, and host config for GeeUIVoiceEmo. Stdlib only.
 
-Audio hook: set EMO_AUDIO_CMD to a program that reads a wav path and
-prints "label confidence". No hook means audio votes neutral.
+Unset or blank variables fall back to the defaults below.
+Lemonade stays the Kokoro path. CosyVoice is a second host, off unless set.
 """
 
 import json
@@ -16,6 +16,46 @@ LABELS = {"neutral", "happy", "sad", "angry", "fear", "surprise"}
 HALF_LIFE = 45.0
 BLEND = 0.6
 MAX_CHARS = 180
+
+DEFAULTS = {
+    "EMO_HOST": "0.0.0.0",
+    "EMO_PORT": "13306",
+    "LEMONADE_HOST": "http://127.0.0.1:13305",
+    "KOKORO_MODEL": "kokoro",
+    "KOKORO_VOICE_FR": "ff_siwis",
+    "KOKORO_VOICE_EN": "af_heart",
+    "COSYVOICE_HOST": "",
+    "COSYVOICE_MODEL": "cosyvoice2",
+    "EMO_AUDIO_CMD": "",
+    "EMO_AUDIO_MODEL": "emotion2vec",
+    "EMO_CHAT_MODEL": "llama",
+}
+
+
+def env(name):
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return DEFAULTS[name]
+    return raw.strip()
+
+
+def config():
+    cosy = env("COSYVOICE_HOST")
+    return {
+        "emo_host": env("EMO_HOST"),
+        "emo_port": int(env("EMO_PORT")),
+        "lemonade_host": env("LEMONADE_HOST").rstrip("/"),
+        "kokoro_model": env("KOKORO_MODEL"),
+        "kokoro_voice_fr": env("KOKORO_VOICE_FR"),
+        "kokoro_voice_en": env("KOKORO_VOICE_EN"),
+        "cosyvoice_host": cosy.rstrip("/") if cosy else "",
+        "cosyvoice_model": env("COSYVOICE_MODEL"),
+        "cosyvoice_enabled": bool(cosy),
+        "audio_cmd": env("EMO_AUDIO_CMD"),
+        "audio_model": env("EMO_AUDIO_MODEL"),
+        "chat_model": env("EMO_CHAT_MODEL"),
+    }
+
 
 mood = {"emotion": "neutral", "intensity": 0.0, "at": time.time()}
 
@@ -60,7 +100,7 @@ def observe(label, confidence, now):
 
 
 def audio_vote(wav):
-    cmd = os.environ.get("EMO_AUDIO_CMD", "").strip()
+    cmd = env("EMO_AUDIO_CMD")
     if not cmd:
         return "neutral", 0.0
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -86,7 +126,11 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
-        if self.path.split("?")[0] != "/mood":
+        path = self.path.split("?")[0]
+        if path == "/config":
+            self._json(200, config())
+            return
+        if path != "/mood":
             self._json(404, {"error": "not found"})
             return
         now = time.time()
@@ -98,10 +142,12 @@ class Handler(BaseHTTPRequestHandler):
         body = self.rfile.read(length)
         path = self.path.split("?")[0]
         now = time.time()
+        cfg = config()
         if path == "/affect/audio":
             label, conf = audio_vote(body)
             observe(label, conf, now)
-            self._json(200, {"audio": label, "confidence": conf, "mood": mood["emotion"]})
+            self._json(200, {"audio": label, "confidence": conf, "mood": mood["emotion"],
+                             "audio_model": cfg["audio_model"]})
             return
         try:
             data = json.loads(body.decode() or "{}")
@@ -116,10 +162,24 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/route":
             text = data.get("text") or ""
             emotion = parse_label(data.get("emotion") or mood["emotion"])
+            lang = (data.get("lang") or "fr").lower()
+            voice = cfg["kokoro_voice_en"] if lang.startswith("en") else cfg["kokoro_voice_fr"]
             engine = "kokoro"
-            if emotion != "neutral" and 0 < len(text.strip()) <= MAX_CHARS:
+            host = cfg["lemonade_host"]
+            model = cfg["kokoro_model"]
+            if cfg["cosyvoice_enabled"] and emotion != "neutral" and 0 < len(text.strip()) <= MAX_CHARS:
                 engine = "cosyvoice"
-            self._json(200, {"engine": engine, "voice_hint": emotion})
+                host = cfg["cosyvoice_host"]
+                model = cfg["cosyvoice_model"]
+                voice = emotion
+            self._json(200, {
+                "engine": engine,
+                "host": host,
+                "model": model,
+                "voice": voice,
+                "chat_model": cfg["chat_model"],
+                "lemonade_host": cfg["lemonade_host"],
+            })
             return
         self._json(404, {"error": "not found"})
 
@@ -128,8 +188,5 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=13306)
-    args = parser.parse_args()
-    ThreadingHTTPServer(("0.0.0.0", args.port), Handler).serve_forever()
+    cfg = config()
+    ThreadingHTTPServer((cfg["emo_host"], cfg["emo_port"]), Handler).serve_forever()
