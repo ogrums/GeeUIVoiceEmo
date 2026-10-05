@@ -12,12 +12,10 @@ import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * Applies the sidecar mood to the body.
+ * Applies the sidecar mood through RobotSDK.
  *
- * adb shell am startservice -n com.geeui.voiceemo/.EmotionService \
- *   -e sidecar http://192.168.1.20:13306
- *
- * One-shot, no poll: -e emotion sad
+ * adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e emotion sad
+ * adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e sidecar http://<pc>:13306
  */
 class EmotionService : Service() {
     private val running = AtomicBoolean(false)
@@ -32,7 +30,7 @@ class EmotionService : Service() {
         if (bus == null) bus = EmotionBus(this)
         val once = intent?.getStringExtra("emotion")
         if (!once.isNullOrBlank()) {
-            show(Emotion.parse(once))
+            bus?.apply(Emotion.parse(once))
             return START_STICKY
         }
         val sidecar = intent?.getStringExtra("sidecar") ?: return START_STICKY
@@ -44,7 +42,7 @@ class EmotionService : Service() {
 
     override fun onDestroy() {
         running.set(false)
-        bus?.close(this)
+        bus?.close()
         pool.shutdownNow()
         super.onDestroy()
     }
@@ -54,14 +52,10 @@ class EmotionService : Service() {
             val label = readMood(base)
             if (label != null && label != last) {
                 last = label
-                show(Emotion.parse(label))
+                bus?.apply(Emotion.parse(label))
             }
             Thread.sleep(400)
         }
-    }
-
-    private fun show(emotion: Emotion) {
-        bus?.apply(BodyMap.pose(emotion), emotion)
     }
 
     private fun readMood(base: String): String? {

@@ -22,11 +22,9 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
-    buildFeatures {
-        aidl = true
-    }
 }
 
 dependencies {
     implementation(project(":emotion-core"))
+    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
 }

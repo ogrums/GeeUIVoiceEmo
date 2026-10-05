@@ -1,49 +1,55 @@
 package com.geeui.voiceemo
 
-import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.content.ServiceConnection
-import android.os.IBinder
-import com.renhejia.robot.letianpaiservice.ILetianpaiService
+import com.leitianpai.robotsdk.RobotService
+import com.leitianpai.robotsdk.commandlib.Light
+import com.leitianpai.robotsdk.message.AntennaLightMessage
+import com.leitianpai.robotsdk.message.AntennaMessage
 
-/** Sends a BodyPose. Does not open the mic and does not walk. */
-class EmotionBus(context: Context) : ServiceConnection {
-    private var api: ILetianpaiService? = null
-    private var pending: List<WireCall> = emptyList()
+/** RobotSDK only. Opens the servo rail once. Does not walk and does not take the mic. */
+class EmotionBus(context: Context) {
+    private val robot = RobotService.getInstance(context.applicationContext)
+    private var motorOn = false
+    private var expressionOn = false
 
-    init {
-        val intent = Intent("android.intent.action.LETIANPAI")
-            .setPackage("com.renhejia.robot.letianpaiservice")
-        context.bindService(intent, this, Context.BIND_AUTO_CREATE)
-    }
-
-    override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-        api = ILetianpaiService.Stub.asInterface(service)
-        pending.forEach { send(it) }
-        pending = emptyList()
-    }
-
-    override fun onServiceDisconnected(name: ComponentName?) {
-        api = null
-    }
-
-    fun apply(pose: BodyPose, emotion: Emotion) {
-        EmotionWire.calls(pose, emotion).forEach { call ->
-            if (api == null) pending = pending + call else send(call)
+    fun apply(emotion: Emotion) {
+        val pose = SdkMap.pose(emotion)
+        if (!motorOn) {
+            robot.robotOpenMotor()
+            motorOn = true
+        }
+        if (!expressionOn) {
+            robot.robotStartExpression(pose.faceId)
+            expressionOn = true
+        } else {
+            robot.robotChangeExpression(pose.faceId)
+        }
+        val ears = AntennaMessage()
+        ears.set(pose.earCmd, pose.earStep, pose.earSpeedMs, pose.earAngle)
+        robot.robotAntennaMotion(ears)
+        val color = light(pose.light)
+        if (color == null) {
+            robot.robotCloseAntennaLight()
+        } else {
+            val lamp = AntennaLightMessage()
+            lamp.set(color)
+            robot.robotAntennaLight(lamp)
         }
     }
 
-    fun close(context: Context) {
-        runCatching { context.unbindService(this) }
-        api = null
+    fun close() {
+        if (expressionOn) robot.robotStopExpression()
+        robot.robotCloseAntennaLight()
+        robot.unbindService()
+        motorOn = false
+        expressionOn = false
     }
 
-    private fun send(call: WireCall) {
-        val svc = api ?: return
-        when (call.method) {
-            "setExpression" -> svc.setExpression(call.command, call.data)
-            else -> svc.setMcuCommand(call.command, call.data)
-        }
+    private fun light(name: String?): Int? = when (name) {
+        "RED" -> Light.RED
+        "BLUE" -> Light.BLUE
+        "WHITE" -> Light.WHITE
+        "YELLOW" -> Light.YELLOW
+        else -> null
     }
 }
