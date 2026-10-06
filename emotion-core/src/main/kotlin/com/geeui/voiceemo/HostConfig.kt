@@ -18,9 +18,9 @@ data class HostConfig(
     val cosyEnabled: Boolean get() = cosyVoiceHost.isNotBlank()
 
     companion object {
-        const val SIDECAR = "http://127.0.0.1:13306"
-        const val LEMONADE = "http://127.0.0.1:13305"
-        const val KOKORO = "kokoro"
+        const val SIDECAR = "http://nimbus:13306"
+        const val LEMONADE = "http://nimbus:13305"
+        const val KOKORO = "kokoro-v1"
         const val VOICE_FR = "ff_siwis"
         const val VOICE_EN = "af_heart"
         const val COSY = "cosyvoice2"

@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Applies the sidecar mood through RobotSDK.
  *
  * adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e emotion sad
- * adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e sidecar http://<pc>:13306
+ * adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e sidecar http://nimbus:13306
  */
 class EmotionService : Service() {
     private val running = AtomicBoolean(false)

@@ -9,8 +9,9 @@ class HostConfigTest {
     @Test
     fun blank_uses_the_lan_defaults() {
         val cfg = HostConfig.from(emptyMap())
-        assertEquals("http://127.0.0.1:13306", cfg.sidecar)
-        assertEquals("http://127.0.0.1:13305", cfg.lemonadeHost)
+        assertEquals("http://nimbus:13306", cfg.sidecar)
+        assertEquals("http://nimbus:13305", cfg.lemonadeHost)
+        assertEquals("kokoro-v1", cfg.kokoroModel)
         assertEquals("ff_siwis", cfg.kokoroVoiceFr)
         assertEquals("af_heart", cfg.kokoroVoiceEn)
         assertFalse(cfg.cosyEnabled)

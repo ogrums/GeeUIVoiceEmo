@@ -10,7 +10,7 @@ import os
 import subprocess
 import tempfile
 import time
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
 
 LABELS = {"neutral", "happy", "sad", "angry", "fear", "surprise"}
 HALF_LIFE = 45.0
@@ -18,10 +18,9 @@ BLEND = 0.6
 MAX_CHARS = 180
 
 DEFAULTS = {
-    "EMO_HOST": "0.0.0.0",
-    "EMO_PORT": "13306",
-    "LEMONADE_HOST": "http://127.0.0.1:13305",
-    "KOKORO_MODEL": "kokoro",
+    "EMO_HOST": "http://nimbus:13306",
+    "LEMONADE_HOST": "http://nimbus:13305",
+    "KOKORO_MODEL": "kokoro-v1",
     "KOKORO_VOICE_FR": "ff_siwis",
     "KOKORO_VOICE_EN": "af_heart",
     "COSYVOICE_HOST": "",
@@ -41,9 +40,11 @@ def env(name):
 
 def config():
     cosy = env("COSYVOICE_HOST")
+    emo = env("EMO_HOST").rstrip("/")
+    parsed = urlparse(emo if "://" in emo else "http://" + emo)
     return {
-        "emo_host": env("EMO_HOST"),
-        "emo_port": int(env("EMO_PORT")),
+        "emo_host": emo,
+        "bind_port": parsed.port or 13306,
         "lemonade_host": env("LEMONADE_HOST").rstrip("/"),
         "kokoro_model": env("KOKORO_MODEL"),
         "kokoro_voice_fr": env("KOKORO_VOICE_FR"),
@@ -206,4 +207,4 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
     cfg = config()
-    ThreadingHTTPServer((cfg["emo_host"], cfg["emo_port"]), Handler).serve_forever()
+    ThreadingHTTPServer(("0.0.0.0", cfg["bind_port"]), Handler).serve_forever()

@@ -34,7 +34,7 @@ Put `RobotSdk-release.2.5.aar` in `app/libs/` before building. It is not committ
 
 ```text
 adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e emotion sad
-adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e sidecar http://<pc>:13306
+adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e sidecar http://nimbus:13306
 ```
 
 ## Sidecar
@@ -43,10 +43,9 @@ adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e sidecar http:
 
 | Variable | Default |
 |---|---|
-| `EMO_HOST` | `0.0.0.0` |
-| `EMO_PORT` | `13306` |
-| `LEMONADE_HOST` | `http://127.0.0.1:13305` |
-| `KOKORO_MODEL` | `kokoro` |
+| `EMO_HOST` | `http://nimbus:13306` |
+| `LEMONADE_HOST` | `http://nimbus:13305` |
+| `KOKORO_MODEL` | `kokoro-v1` |
 | `KOKORO_VOICE_FR` | `ff_siwis` |
 | `KOKORO_VOICE_EN` | `af_heart` |
 | `COSYVOICE_HOST` | empty, so CosyVoice stays off |
