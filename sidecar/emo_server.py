@@ -7,6 +7,7 @@ Lemonade stays the Kokoro path. CosyVoice is a second host, off unless set.
 
 import json
 import os
+import subprocess
 import sys
 import traceback
 import tempfile
