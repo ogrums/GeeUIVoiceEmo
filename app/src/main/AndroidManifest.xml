@@ -3,6 +3,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
+    <!-- Android 11 package visibility. RobotSDK binds LetianpaiService. -->
+    <queries>
+        <package android:name="com.renhejia.robot.letianpaiservice" />
+        <package android:name="com.letianpai.robot" />
+    </queries>
+
     <application
         android:label="GeeUIVoiceEmo"
         android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
