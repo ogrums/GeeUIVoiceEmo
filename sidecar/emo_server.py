@@ -29,7 +29,7 @@ DEFAULTS = {
     "EMO_AUDIO_CMD": "",
     "EMO_AUDIO_MODEL": "emotion2vec",
     "EMO_STT_MODEL": "whisper-small",
-    "EMO_CHAT_MODEL": "",
+    "EMO_CHAT_MODEL": "gemma4e-flash-e2b-FLM",
 }
 
 

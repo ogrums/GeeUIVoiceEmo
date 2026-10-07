@@ -26,7 +26,7 @@ data class HostConfig(
         const val COSY = "cosyvoice2"
         const val AUDIO = "emotion2vec"
         const val STT = "whisper-small"
-        const val CHAT = ""
+        const val CHAT = "gemma4e-flash-e2b-FLM"
 
         fun orDefault(raw: String?, fallback: String): String {
             val value = raw?.trim().orEmpty()
