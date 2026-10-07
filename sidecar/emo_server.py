@@ -230,4 +230,10 @@ if __name__ == "__main__":
     cfg = config()
     log(f"listen 0.0.0.0:{cfg['bind_port']} advertised {cfg['emo_host']}")
     log(json.dumps(cfg))
-    ThreadingHTTPServer(("0.0.0.0", cfg["bind_port"]), Handler).serve_forever()
+    server = ThreadingHTTPServer(("0.0.0.0", cfg["bind_port"]), Handler)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        log("stopped")
+    finally:
+        server.server_close()
