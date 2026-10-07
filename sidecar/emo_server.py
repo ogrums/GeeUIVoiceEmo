@@ -7,7 +7,8 @@ Lemonade stays the Kokoro path. CosyVoice is a second host, off unless set.
 
 import json
 import os
-import subprocess
+import sys
+import traceback
 import tempfile
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -119,10 +120,16 @@ def audio_vote(wav):
                 return parse_label(parts[0]), float(parts[1]) if len(parts) > 1 else 0.5
             except (subprocess.SubprocessError, ValueError, IndexError) as exc:
                 last = exc
+                log(f"audio hook try {attempt + 1} failed: {exc}")
                 time.sleep(0.2 * (attempt + 1))
+        log(f"audio hook gave up: {last}")
         return "neutral", 0.0
     finally:
         os.unlink(path)
+
+
+def log(msg):
+    print(time.strftime("%H:%M:%S"), msg, flush=True)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -133,11 +140,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(raw)))
         self.end_headers()
         self.wfile.write(raw)
+        shown = raw.decode()
+        if len(shown) > 300:
+            shown = shown[:300] + "…"
+        log(f"{self.command} {self.path} {code} {shown}")
 
     def do_GET(self):
         try:
             self._get()
         except Exception as exc:
+            log(f"GET {self.path} crash {exc}")
+            traceback.print_exc()
             self._json(500, {"error": type(exc).__name__})
 
     def _get(self):
@@ -156,12 +169,16 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self._post()
         except Exception as exc:
+            log(f"POST {self.path} crash {exc}")
+            traceback.print_exc()
             self._json(500, {"error": type(exc).__name__})
 
     def _post(self):
         length = int(self.headers.get("Content-Length", "0"))
         body = self.rfile.read(length)
         path = self.path.split("?")[0]
+        preview = body[:200].decode(errors="replace")
+        log(f"POST {path} from {self.client_address[0]} {length}b {preview!r}")
         now = time.time()
         cfg = config()
         if path == "/affect/audio":
@@ -205,9 +222,11 @@ class Handler(BaseHTTPRequestHandler):
         self._json(404, {"error": "not found"})
 
     def log_message(self, fmt, *args):
-        return
+        log(f"{self.address_string()} {fmt % args}")
 
 
 if __name__ == "__main__":
     cfg = config()
+    log(f"listen 0.0.0.0:{cfg['bind_port']} advertised {cfg['emo_host']}")
+    log(json.dumps(cfg))
     ThreadingHTTPServer(("0.0.0.0", cfg["bind_port"]), Handler).serve_forever()
