@@ -19,13 +19,14 @@ data class HostConfig(
 
     companion object {
         const val SIDECAR = "http://nimbus:13306"
-        const val LEMONADE = "http://nimbus:13305"
-        const val KOKORO = "kokoro-v1"
+        const val LEMONADE = "http://nimbus:13305/api/v1"
+        const val KOKORO = "kokoro"
         const val VOICE_FR = "ff_siwis"
         const val VOICE_EN = "af_heart"
         const val COSY = "cosyvoice2"
         const val AUDIO = "emotion2vec"
-        const val CHAT = "llama"
+        const val STT = "whisper-base"
+        const val CHAT = ""
 
         fun orDefault(raw: String?, fallback: String): String {
             val value = raw?.trim().orEmpty()

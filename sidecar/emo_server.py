@@ -20,15 +20,16 @@ MAX_CHARS = 180
 
 DEFAULTS = {
     "EMO_HOST": "http://nimbus:13306",
-    "LEMONADE_HOST": "http://nimbus:13305",
-    "KOKORO_MODEL": "kokoro-v1",
+    "LEMONADE_HOST": "http://nimbus:13305/api/v1",
+    "KOKORO_MODEL": "kokoro",
     "KOKORO_VOICE_FR": "ff_siwis",
     "KOKORO_VOICE_EN": "af_heart",
     "COSYVOICE_HOST": "",
     "COSYVOICE_MODEL": "cosyvoice2",
     "EMO_AUDIO_CMD": "",
     "EMO_AUDIO_MODEL": "emotion2vec",
-    "EMO_CHAT_MODEL": "llama",
+    "EMO_STT_MODEL": "whisper-base",
+    "EMO_CHAT_MODEL": "",
 }
 
 
@@ -55,6 +56,7 @@ def config():
         "cosyvoice_enabled": bool(cosy),
         "audio_cmd": env("EMO_AUDIO_CMD"),
         "audio_model": env("EMO_AUDIO_MODEL"),
+        "stt_model": env("EMO_STT_MODEL"),
         "chat_model": env("EMO_CHAT_MODEL"),
     }
 
