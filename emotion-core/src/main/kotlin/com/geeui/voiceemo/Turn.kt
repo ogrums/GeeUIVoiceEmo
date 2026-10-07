@@ -21,7 +21,7 @@ object EmotionPipeline {
         val user = Arbiter.merge(audio, text)
         mood.observe(user, now)
         val felt = mood.snapshot(now)
-        val shown = if (felt.intensity >= 0.25f) felt.emotion else Emotion.NEUTRAL
+        val shown = if (felt.confidence >= 0.25f) felt.emotion else Emotion.NEUTRAL
         return EmotionTurn(
             say = say,
             user = user,

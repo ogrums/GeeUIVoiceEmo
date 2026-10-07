@@ -36,12 +36,14 @@ class EmotionBus(context: Context) {
             lamp.set(color)
             robot.robotAntennaLight(lamp)
         }
-        if (pose.action != null) {
+        val action = pose.action
+        if (action != null) {
             val move = ActionMessage()
-            move.set(pose.action, 3, 1)
+            move.set(action, 3, 1)
             robot.robotActionCommand(move)
         }
-        if (pose.sound != null) robot.robotControlSound(pose.sound)
+        val sound = pose.sound
+        if (sound != null) robot.robotControlSound(sound)
     }
 
     fun close() {

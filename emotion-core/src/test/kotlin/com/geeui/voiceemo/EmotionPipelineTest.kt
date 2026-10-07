@@ -44,7 +44,7 @@ class EmotionPipelineTest {
         )
         assertEquals(TtsEngine.COSYVOICE, turn.engine)
         assertEquals("h0119", turn.pose.faceId)
-        assertTrue(turn.mood.intensity > 0.25f)
+        assertTrue(turn.mood.confidence > 0.25f)
     }
 
     @Test
