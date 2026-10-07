@@ -173,7 +173,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = json.loads(body.decode() or "{}")
         except json.JSONDecodeError:
-            self._json(400, {"error": "bad json"})
+            self._json(400, {"error": "bad json", "body": body.decode(errors="replace")[:200]})
             return
         if path == "/affect/text":
             label = parse_label(data.get("label") or data.get("emotion"))
