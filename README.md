@@ -45,14 +45,14 @@ adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e sidecar http:
 |---|---|
 | `EMO_HOST` | `http://nimbus:13306` |
 | `LEMONADE_HOST` | `http://nimbus:13305/api/v1` |
-| `KOKORO_MODEL` | `kokoro` |
+| `KOKORO_MODEL` | `kokoro-v1` |
 | `KOKORO_VOICE_FR` | `ff_siwis` |
 | `KOKORO_VOICE_EN` | `af_heart` |
 | `COSYVOICE_HOST` | empty, so CosyVoice stays off |
 | `COSYVOICE_MODEL` | `cosyvoice2` |
 | `EMO_AUDIO_CMD` | empty, audio vote is neutral |
 | `EMO_AUDIO_MODEL` | `emotion2vec` |
-| `EMO_STT_MODEL` | `whisper-base` |
+| `EMO_STT_MODEL` | `whisper-small` |
 | `EMO_CHAT_MODEL` | vide, comme GeeUIVoice : le premier modèle chat de Lemonade |
 
 `GET /config` returns the resolved values. `POST /route` returns `engine`, `host`, `model` and `voice`. CosyVoice is chosen only if `COSYVOICE_HOST` is set, the label is not neutral, and the clause is at most 180 characters. Otherwise Kokoro on Lemonade.

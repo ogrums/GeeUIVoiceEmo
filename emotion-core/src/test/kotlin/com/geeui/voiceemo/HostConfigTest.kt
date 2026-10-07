@@ -11,7 +11,7 @@ class HostConfigTest {
         val cfg = HostConfig.from(emptyMap())
         assertEquals("http://nimbus:13306", cfg.sidecar)
         assertEquals("http://nimbus:13305/api/v1", cfg.lemonadeHost)
-        assertEquals("kokoro", cfg.kokoroModel)
+        assertEquals("kokoro-v1", cfg.kokoroModel)
         assertEquals("ff_siwis", cfg.kokoroVoiceFr)
         assertEquals("af_heart", cfg.kokoroVoiceEn)
         assertFalse(cfg.cosyEnabled)

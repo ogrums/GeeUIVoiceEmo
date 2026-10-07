@@ -21,14 +21,14 @@ MAX_CHARS = 180
 DEFAULTS = {
     "EMO_HOST": "http://nimbus:13306",
     "LEMONADE_HOST": "http://nimbus:13305/api/v1",
-    "KOKORO_MODEL": "kokoro",
+    "KOKORO_MODEL": "kokoro-v1",
     "KOKORO_VOICE_FR": "ff_siwis",
     "KOKORO_VOICE_EN": "af_heart",
     "COSYVOICE_HOST": "",
     "COSYVOICE_MODEL": "cosyvoice2",
     "EMO_AUDIO_CMD": "",
     "EMO_AUDIO_MODEL": "emotion2vec",
-    "EMO_STT_MODEL": "whisper-base",
+    "EMO_STT_MODEL": "whisper-small",
     "EMO_CHAT_MODEL": "",
 }
 
