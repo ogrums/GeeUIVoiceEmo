@@ -14,19 +14,19 @@ class EmotionFusionTest {
     @Test
     fun below_threshold_is_neutral() {
         val f = EmotionFusion(clock = { 0L })
-        assertEquals(Emotion.NEUTRAL, f.fuse(Emotion.ANGRY, 0.8, Emotion.HAPPY, true).emotion)
+        assertEquals(Emotion.NEUTRAL, f.fuse(Emotion.ANGRY, 0.7, Emotion.HAPPY, true).emotion)
         assertEquals(Emotion.NEUTRAL, f.fuse(Emotion.SAD, 0.5, Emotion.NEUTRAL, false).emotion)
         assertEquals(Emotion.SAD, f.fuse(Emotion.SAD, 0.9, Emotion.HAPPY, true).emotion)
     }
 
     @Test
     fun threshold_is_0_45() {
-        // audio-only SAD at 0.75 -> 0.6 * 0.75 = 0.45, exactly on threshold
-        val f = EmotionFusion(clock = { 0L })
-        // Just below: 0.74 * 0.6 = 0.444
-        assertEquals(Emotion.NEUTRAL, f.fuse(Emotion.SAD, 0.74, Emotion.NEUTRAL, false).emotion)
-        // At threshold: 0.75 * 0.6 = 0.45
-        assertEquals(Emotion.SAD, f.fuse(Emotion.SAD, 0.75, Emotion.NEUTRAL, false).emotion)
+        // Audio-only SAD at 0.7 -> 0.6 * 0.7 = 0.42 < 0.45 -> neutral.
+        val low = EmotionFusion(clock = { 0L })
+        assertEquals(Emotion.NEUTRAL, low.fuse(Emotion.SAD, 0.7, Emotion.NEUTRAL, false).emotion)
+        // Audio-only SAD at 0.8 -> 0.6 * 0.8 = 0.48 >= 0.45 -> SAD.
+        val high = EmotionFusion(clock = { 0L })
+        assertEquals(Emotion.SAD, high.fuse(Emotion.SAD, 0.8, Emotion.NEUTRAL, false).emotion)
     }
 
     @Test
