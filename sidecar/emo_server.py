@@ -52,7 +52,7 @@ DEFAULTS = {
     "EMO_AUDIO_HEAD": "",
     "EMO_ORT_PROVIDERS": "",
     "EMO_AUDIO_LABELS": ",".join(ONNX_LABELS),
-    "EMO_STT_MODEL": "whisper-small",
+    "EMO_STT_MODEL": "Whisper-Small",
     "EMO_CHAT_MODEL": "gemma4e-flash-e2b-FLM",
 }
 
