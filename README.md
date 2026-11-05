@@ -62,3 +62,22 @@ The Android service takes the same names as extras (`sidecar`, `lemonade`, `cosy
 ## Core
 
 `emotion-core` is plain Kotlin. `./gradlew :emotion-core:test`. Copy the Gradle wrapper from GeeUIVoice. SDK 30 to build `app/`.
+
+## Emotion gateway
+
+The unchanged stdlib server also exposes OpenAI-compatible routes on port 13306: `POST /v1/audio/transcriptions`, `POST /v1/chat/completions` (byte-preserving SSE), `POST /v1/audio/speech`, and `GET /v1/models`. They forward to `LEMONADE_HOST`. Transcription classifies the multipart WAV while Whisper runs and adds the audio-only `emotion` and `emotion_confidence` to its JSON. Fusion happens on the robot in `EmotionFusion` (emotion-core), the single source of truth: audio emotion 0.6 / LLM reply tag from `EmotionTagParser` 0.4, neutral below a best score of 0.45, and repeated non-neutral reactions suppressed for 4 s.
+
+Set `EMO_AUDIO_ONNX` to an emotion2vec+ ONNX file. The default labels are `angry, disgusted, fearful, happy, neutral, other, sad, surprised, unknown` and can be replaced with comma-separated `EMO_AUDIO_LABELS`. Input must be 16 kHz mono 16-bit PCM WAV; below one second, the vote is neutral. For the backbone export, `EMO_AUDIO_HEAD` points to a JSON linear head with `weight`/`bias` (nested objects and `weights`/`biases` are accepted), or `weight` can be `[D,C]`; a direct 9-logit model needs no head. Audio is mean-pooled over the feature sequence. Provider override is comma-separated `EMO_ORT_PROVIDERS`; otherwise the first available of CUDA, ROCm, MIGraphX, DirectML, Vitis AI and CPU is used. Without a model or `onnxruntime`, the previous `EMO_AUDIO_CMD` hook or neutral vote remains available. Install the hardware-matched ORT package separately, e.g. `onnxruntime` (CPU) or `onnxruntime-gpu` (CUDA); no other dependency was added.
+
+`FRENCH_EMOTION_SYSTEM_PROMPT` instructs a chat model to begin with one emotion tag. `EmotionTagParser` consumes that tag across streaming boundaries and removes it; `finish()` flushes an incomplete tag as ordinary text. Run Python checks with `python3 -m unittest discover -s sidecar -v`; Kotlin checks remain `./gradlew :emotion-core:test` when the wrapper is present.
+
+### Campagne de test du sidecar
+
+Le cahier de test et son automate couvrent les six émotions, les labels bruts, les erreurs audio/amont, les proxies et la latence. La campagne mock fonctionne entièrement hors ligne avec la bibliothèque standard Python :
+
+```bash
+python3 sidecar/tests/run_emotion_tests.py --mode mock
+python3 sidecar/tests/run_emotion_tests.py --mode live --url http://nimbus:13306 --audio-dir sidecar/tests/samples
+```
+
+Consulter [`sidecar/tests/CAHIER_DE_TEST.md`](sidecar/tests/CAHIER_DE_TEST.md) pour le détail, les rapports et le téléchargement sélectif d'échantillons RAVDESS sous CC BY-NC-SA 4.0.

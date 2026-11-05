@@ -1,0 +1,6 @@
+reports/
+samples/
+__pycache__/
+*.wav
+*.mp3
+*.flac

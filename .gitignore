@@ -2,3 +2,8 @@
 build/
 *.class
 .idea/
+
+__pycache__/
+*.py[cod]
+
+local.properties
