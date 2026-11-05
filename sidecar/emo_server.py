@@ -9,6 +9,7 @@ import array
 import concurrent.futures
 import io
 import json
+import re
 import math
 import os
 from pathlib import Path
@@ -89,6 +90,21 @@ def config():
 
 
 mood = {"emotion": "neutral", "intensity": 0.0, "at": time.time()}
+
+
+
+def _with_model_field(body, content_type, model):
+    """Ajoute le champ multipart `model` (exigé par Lemonade) s'il manque."""
+    match = re.search(r'boundary="?([^";]+)"?', content_type)
+    if not match or not model:
+        return body
+    closing = b"--" + match.group(1).encode() + b"--"
+    index = body.rfind(closing)
+    if index < 0:
+        return body
+    field = (closing[:-2] + b'\r\nContent-Disposition: form-data; name="model"\r\n\r\n'
+             + model.encode() + b"\r\n")
+    return body[:index] + field + body[index:]
 
 
 def parse_label(raw):
@@ -322,7 +338,9 @@ class Handler(BaseHTTPRequestHandler):
         from email.parser import BytesParser
         from email.policy import default
         envelope = b"Content-Type: " + content_type.encode() + b"\r\nMIME-Version: 1.0\r\n\r\n" + body
+        fields = set()
         for part in BytesParser(policy=default).parsebytes(envelope).iter_parts():
+            fields.add(part.get_param("name", header="content-disposition"))
             if part.get_filename():
                 parts[part.get_param("name", header="content-disposition")] = (
                     part.get_filename(), part.get_payload(decode=True),
@@ -332,6 +350,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(400, {"error": "missing audio file"})
             return
         audio = parts["file"][1]
+        if "model" not in fields:
+            body = _with_model_field(body, content_type, config()["stt_model"])
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
         try:
             upstream = executor.submit(self._proxy, self.path.split("?")[0], body, content_type)

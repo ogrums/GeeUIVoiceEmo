@@ -63,9 +63,15 @@ def wav_bytes(seconds=1.2, kind="tone"):
     return out.getvalue()
 
 
-def multipart(filename=None, content=b"", content_type="audio/wav"):
+STT_MODEL = os.environ.get("EMO_STT_MODEL", "whisper-small")
+
+
+def multipart(filename=None, content=b"", content_type="audio/wav", model=None):
     boundary = "----GeeUI" + uuid.uuid4().hex
     body = b""
+    if model:
+        body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n"
+                 f"{model}\r\n").encode()
     if filename is not None:
         body += (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; "
                  f"filename=\"{filename}\"\r\nContent-Type: {content_type}\r\n\r\n").encode()
@@ -90,8 +96,8 @@ def request(url, method="GET", body=None, content_type=None, timeout=15):
     return status, headers, raw, elapsed
 
 
-def transcription(url, filename, audio, content_type="audio/wav"):
-    body, mime = multipart(filename, audio, content_type)
+def transcription(url, filename, audio, content_type="audio/wav", model=True):
+    body, mime = multipart(filename, audio, content_type, STT_MODEL if model is True else model)
     return request(url + "/v1/audio/transcriptions", "POST", body, mime, timeout=20)
 
 
@@ -104,6 +110,7 @@ def json_body(raw):
 
 class StubState:
     delay = 0.0
+    last_model = None
 
 
 class FakeLemonade(BaseHTTPRequestHandler):
@@ -136,6 +143,14 @@ class FakeLemonade(BaseHTTPRequestHandler):
                 envelope = (b"Content-Type: " + self.headers["Content-Type"].encode()
                             + b"\r\nMIME-Version: 1.0\r\n\r\n" + body)
                 parts = list(BytesParser(policy=default).parsebytes(envelope).iter_parts())
+                fields = {p.get_param("name", header="content-disposition"): p for p in parts}
+                if "model" not in fields:
+                    # Même réponse que Lemonade quand le champ model manque.
+                    self._reply(400, json.dumps({"error": {"code": "missing_argument",
+                        "message": "Missing required argument 'model'",
+                        "type": "invalid_request_error"}}).encode())
+                    return
+                StubState.last_model = fields["model"].get_content().strip()
                 audio = next(p.get_payload(decode=True) for p in parts if p.get_filename())
                 with wave.open(io.BytesIO(audio), "rb") as check:
                     check.getparams()
@@ -268,6 +283,13 @@ def run_mock():
                      "HTTP 400 missing audio file", f"HTTP {status}, {raw!r}", elapsed)
         large = wav_bytes(3.0) + b"0" * (2 * 1024 * 1024) + b"GEEUI-neutral"
         check_transcription(campaign, harness.url, "EDGE-06", "grand.wav", large, "neutral")
+        StubState.last_model = None
+        status, _, raw, elapsed = transcription(harness.url, "sans-model.wav", audio + b"GEEUI-neutral", model=None)
+        expected_model = os.environ.get("EMO_STT_MODEL") or "whisper-small"
+        campaign.add("EDGE-07", "Requête client sans champ model",
+                     status == 200 and StubState.last_model == expected_model,
+                     f"HTTP 200, le sidecar ajoute model={expected_model}",
+                     f"HTTP {status}, model reçu par Lemonade={StubState.last_model}", elapsed)
 
         # Modèle absent et modèle invalide : repli sûr de la vraie fonction de production.
         harness.server.onnx_audio_vote = harness.original_vote
@@ -425,12 +447,15 @@ def write_reports(campaign, observations, mode, target, destination):
 
 
 def main():
+    global STT_MODEL
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("mock", "live"), default="mock")
     parser.add_argument("--url", default="http://127.0.0.1:13306", help="URL du sidecar en mode live")
     parser.add_argument("--audio-dir", type=Path, default=ROOT / "samples/ravdess", help="WAV et manifest.csv (défaut : corpus RAVDESS commité)")
+    parser.add_argument("--stt-model", default=STT_MODEL, help="Modèle Whisper envoyé dans le champ model (défaut : EMO_STT_MODEL ou whisper-small)")
     parser.add_argument("--reports-dir", type=Path, default=ROOT / "reports")
     args = parser.parse_args()
+    STT_MODEL = args.stt_model
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     destination = args.reports_dir / stamp
     try:
