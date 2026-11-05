@@ -14,34 +14,49 @@ La réponse de transcription attendue conserve le JSON Whisper et ajoute `emotio
 
 ## Cas de test
 
+Les identifiants et l'ordre ci-dessous correspondent exactement à ceux du script `run_emotion_tests.py` et du rapport.
+
+### Émotions (mock)
+
+Chaque cas envoie un WAV de 1,2 s. Le classifieur simulé renvoie le label brut indiqué, puis le sidecar le convertit en émotion robot. Les labels RAVDESS sont repris tels quels ; `other` et `unknown` sont des labels propres à emotion2vec+.
+
+| ID | Label brut simulé | Code RAVDESS | Émotion robot attendue | Vérifications |
+|---|---|---|---|---|
+| EMO-01 | `neutral` | 01 | `neutral` | HTTP 200, confiance numérique |
+| EMO-02 | `calm` | 02 | `neutral` | HTTP 200, confiance numérique |
+| EMO-03 | `happy` | 03 | `happy` | HTTP 200, confiance numérique, champs Whisper conservés (`text`, `language`, `segments`) |
+| EMO-04 | `sad` | 04 | `sad` | HTTP 200, confiance numérique |
+| EMO-05 | `angry` | 05 | `angry` | HTTP 200, confiance numérique |
+| EMO-06 | `fearful` | 06 | `fear` | HTTP 200, confiance numérique |
+| EMO-07 | `disgusted` | 07 | `neutral` | HTTP 200, confiance numérique |
+| EMO-08 | `surprised` | 08 | `surprise` | HTTP 200, confiance numérique |
+| EMO-09 | `other` | aucun | `neutral` | HTTP 200, confiance numérique |
+| EMO-10 | `unknown` | aucun | `neutral` | HTTP 200, confiance numérique |
+
+### Cas limites, amont, configuration et proxy (mock)
+
 | ID | Objectif | Entrée / simulation | Résultat attendu |
 |---|---|---|---|
-| EMO-01 | Joie | WAV ≥ 1 s ; label forcé `happy` | HTTP 200 ; `emotion=happy`, confiance numérique ; champs Whisper conservés |
-| EMO-02 | Tristesse | WAV ≥ 1 s ; label forcé `sad` | HTTP 200 ; `emotion=sad` |
-| EMO-03 | Colère | WAV ≥ 1 s ; label forcé `angry` | HTTP 200 ; `emotion=angry` |
-| EMO-04 | Peur | WAV ≥ 1 s ; label forcé `fear` (alias de `fearful`) | HTTP 200 ; `emotion=fear` |
-| EMO-05 | Surprise | WAV ≥ 1 s ; label forcé `surprise` (alias de `surprised`) | HTTP 200 ; `emotion=surprise` |
-| EMO-06 | Neutralité | WAV ≥ 1 s ; label forcé `neutral` | HTTP 200 ; `emotion=neutral` |
-| EMO-07 | Calme RAVDESS | Label brut `calm` | `emotion=neutral` |
-| EMO-08 | Repli du dégoût | Label brut `disgusted` (code 07) | `emotion=neutral` |
-| EMO-09 | Surprise RAVDESS | Label brut `surprised` (code 08) | `emotion=surprise` |
-| EMO-10 | Repli d'inconnu | Label brut `unknown` | `emotion=neutral` |
-
-Les scénarios mock couvrent donc les huit codes RAVDESS, `other` et `unknown` en plus des six émotions robot.
-| EDGE-01 | Clip trop court | WAV tonal de 0,5 s ; vrai classifieur, sans modèle | HTTP 200 ; `neutral`, confiance 0 ; aucun appel ONNX nécessaire |
-| EDGE-02 | Silence | WAV de silence de 1,2 s ; label `neutral` simulé | Réponse valide ; `neutral` |
-| EDGE-03 | Bruit | WAV de bruit pseudo-aléatoire de 1,2 s ; label `neutral` simulé | Réponse valide ; `neutral` |
-| EDGE-04 | Fichier corrompu | Octets non audio nommés `corrompu.wav` | HTTP 400 de l'amont conservé ; pas d'émotion ajoutée |
-| EDGE-05 | Champ manquant | Multipart sans partie `file` | HTTP 400 ; `{"error":"missing audio file"}` |
-| EDGE-06 | Fichier volumineux | WAV d'environ 2 Mio + données supplémentaires | Pas de troncature/crash ; HTTP 200 et émotion simulée |
-| UP-01 | Lemonade arrêté | URL amont pointant vers un port local fermé | Comportement actuel : HTTP 500 contrôlé `{"error":"URLError"}`, pas de crash du serveur |
-| UP-02 | Lemonade trop lent | Amont différé et timeout du stub | Comportement actuel : HTTP 500 contrôlé `TimeoutError` |
-| CONF-01 | Modèle absent | `EMO_AUDIO_ONNX` et `EMO_AUDIO_CMD` vides | Repli sans erreur : `neutral`, confiance 0 |
-| CONF-02 | Modèle mal configuré | `EMO_AUDIO_ONNX=/chemin/inexistant.onnx` | Erreur ONNX interceptée ; repli `neutral`, transcription conservée |
-| PROXY-01 | Chat en streaming | POST chat `stream=true`, trois événements SSE du stub | HTTP 200, `text/event-stream`, fragments `Bon`, `jour`, puis `[DONE]`, sans altération |
+| EDGE-01 | Clip trop court | WAV tonal de 0,5 s, vrai classifieur sans modèle | HTTP 200, `neutral`, confiance 0, aucun appel ONNX |
+| EDGE-02 | Silence | WAV de silence de 1,2 s, label `neutral` simulé | HTTP 200, `neutral` |
+| EDGE-03 | Bruit | WAV de bruit pseudo-aléatoire de 1,2 s, label `neutral` simulé | HTTP 200, `neutral` |
+| EDGE-04 | Fichier corrompu | Octets non audio nommés `corrompu.wav` | HTTP 400 de l'amont conservé, pas de champ `emotion` |
+| EDGE-05 | Champ manquant | Multipart sans partie `file` | HTTP 400, `{"error":"missing audio file"}` |
+| EDGE-06 | Fichier volumineux | WAV de 3 s suivi d'environ 2 Mio de données | HTTP 200, pas de troncature ni de crash, `neutral` |
+| CONF-01 | Modèle absent | `EMO_AUDIO_ONNX` et `EMO_AUDIO_CMD` vides | HTTP 200, repli `neutral` sans erreur |
+| CONF-02 | Modèle mal configuré | `EMO_AUDIO_ONNX=/chemin/inexistant.onnx` | HTTP 200, erreur ONNX interceptée, repli `neutral` |
+| UP-01 | Lemonade arrêté | URL amont vers un port local fermé | HTTP 500 contrôlé `{"error":"URLError"}`, le serveur continue |
+| UP-02 | Lemonade trop lent | Réponse amont retardée au-delà du timeout | HTTP 500 contrôlé `TimeoutError`, le serveur continue |
+| PROXY-01 | Chat en streaming | POST `/v1/chat/completions` avec `stream=true`, trois événements SSE | HTTP 200, `text/event-stream`, fragments `Bon` et `jour` puis `[DONE]`, sans altération |
 | PROXY-02 | Synthèse vocale | POST `/v1/audio/speech` | HTTP 200, `Content-Type: audio/wav`, contenu RIFF transmis |
-| PROXY-03 | Modèles | GET `/v1/models` | HTTP 200 ; JSON de l'amont inchangé |
-| PERF-01 | Latence | Cinq transcriptions mock successives ; toutes requêtes live | Durée par cas, moyenne et p95 dans Markdown/JSON ; seuil non imposé en mock |
+| PROXY-03 | Modèles | GET `/v1/models` | HTTP 200, JSON de l'amont inchangé |
+| PERF-01 | Latence | Cinq transcriptions successives | 5 mesures valides ; moyenne et p95 dans le rapport, sans seuil imposé |
+
+Total mock : 24 cas.
+
+### Mode live
+
+Un cas par WAV du dossier audio (24 avec le corpus RAVDESS commité, 3 par expression). Le résultat attendu vient de la colonne `expected_emotion` du manifeste. Le mode live ajoute aussi trois cas synthétiques, `LIVE-SHORT` (0,5 s), `LIVE-SILENCE` et `LIVE-NOISE` ; les autres erreurs ne sont validées qu'en mock.
 
 ## Exécution
 
@@ -51,7 +66,7 @@ Depuis la racine du dépôt :
 # Tout simuler, hors ligne ; sortie non nulle si au moins un cas échoue
 python3 sidecar/tests/run_emotion_tests.py --mode mock
 
-# Vrais fichiers ; le nom doit contenir happy, sad, angry, fear, surprise ou neutral
+# Vrais fichiers, émotion attendue lue dans manifest.csv
 python3 sidecar/tests/run_emotion_tests.py --mode live \
   --url http://nimbus:13306
 
@@ -59,7 +74,7 @@ python3 sidecar/tests/run_emotion_tests.py --mode live \
 # --audio-dir sidecar/tests/samples/ravdess
 ```
 
-Un `manifest.csv` facultatif dans le dossier prioritaire sur les noms contient `file,expected_emotion`, par exemple :
+Le dossier audio contient un `manifest.csv` à trois colonnes : le fichier, le label RAVDESS brut et l'émotion robot attendue.
 
 ```csv
 file,ravdess_label,expected_emotion
@@ -67,7 +82,9 @@ file,ravdess_label,expected_emotion
 03-01-08-02-01-01-01.wav,surprised,surprise
 ```
 
-RAVDESS contient huit codes : neutral, calm, happy, sad, angry, fearful, disgusted et surprised. Le manifeste conserve le label brut ; calm et disgusted sont attendus comme neutral. Le rapport live fournit l'exactitude par label brut et par émotion robot, ainsi que la matrice de confusion robot. Le mode live ajoute les cas court, silence et bruit. Les autres erreurs sont validées en mock.
+Sans manifeste, l'émotion attendue est déduite du nom de fichier, qui doit alors contenir un label (`happy`, `sad`, `angry`, `fearful`, `surprised`, `neutral`…). Les noms RAVDESS étant numériques, le manifeste est nécessaire pour ce corpus.
+
+Le rapport live fournit l'exactitude par label brut et par émotion robot, ainsi que la matrice de confusion robot.
 
 Les rapports `RAPPORT.md`, `resultats.json` et `rapport.html` sont créés dans `sidecar/tests/reports/<horodatage>/`. Le JSON contient les réponses détaillées, l'exactitude par émotion, la matrice de confusion et les latences. Le HTML est autonome.
 
