@@ -63,7 +63,7 @@ def wav_bytes(seconds=1.2, kind="tone"):
     return out.getvalue()
 
 
-STT_MODEL = os.environ.get("EMO_STT_MODEL", "whisper-small")
+STT_MODEL = os.environ.get("EMO_STT_MODEL", "Whisper-Small")
 
 
 def multipart(filename=None, content=b"", content_type="audio/wav", model=None):
@@ -127,7 +127,7 @@ class FakeLemonade(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/v1/models":
-            self._reply(200, json.dumps({"object": "list", "data": [{"id": "whisper-small"}]}).encode())
+            self._reply(200, json.dumps({"object": "list", "data": [{"id": "Whisper-Small"}]}).encode())
         else:
             self._reply(404, b'{"error":"not found"}')
 
@@ -285,7 +285,7 @@ def run_mock():
         check_transcription(campaign, harness.url, "EDGE-06", "grand.wav", large, "neutral")
         StubState.last_model = None
         status, _, raw, elapsed = transcription(harness.url, "sans-model.wav", audio + b"GEEUI-neutral", model=None)
-        expected_model = os.environ.get("EMO_STT_MODEL") or "whisper-small"
+        expected_model = os.environ.get("EMO_STT_MODEL") or "Whisper-Small"
         campaign.add("EDGE-07", "Requête client sans champ model",
                      status == 200 and StubState.last_model == expected_model,
                      f"HTTP 200, le sidecar ajoute model={expected_model}",
@@ -330,7 +330,7 @@ def run_mock():
         campaign.add("PROXY-02", "Proxy synthèse vocale WAV", status == 200 and raw.startswith(b"RIFF") and headers.get("Content-Type") == "audio/wav",
                      "HTTP 200 audio/wav RIFF", f"HTTP {status}, {headers.get('Content-Type')}, {len(raw)} octets", elapsed)
         status, _, raw, elapsed = request(harness.url + "/v1/models")
-        campaign.add("PROXY-03", "Proxy liste des modèles", status == 200 and json_body(raw)["data"][0]["id"] == "whisper-small",
+        campaign.add("PROXY-03", "Proxy liste des modèles", status == 200 and json_body(raw)["data"][0]["id"] == "Whisper-Small",
                      "HTTP 200 et liste Whisper inchangée", f"HTTP {status}, {raw!r}", elapsed)
         # Mesure dédiée : 5 requêtes, moyenne et p95 calculées dans le rapport.
         latencies = []
@@ -452,7 +452,7 @@ def main():
     parser.add_argument("--mode", choices=("mock", "live"), default="mock")
     parser.add_argument("--url", default="http://127.0.0.1:13306", help="URL du sidecar en mode live")
     parser.add_argument("--audio-dir", type=Path, default=ROOT / "samples/ravdess", help="WAV et manifest.csv (défaut : corpus RAVDESS commité)")
-    parser.add_argument("--stt-model", default=STT_MODEL, help="Modèle Whisper envoyé dans le champ model (défaut : EMO_STT_MODEL ou whisper-small)")
+    parser.add_argument("--stt-model", default=STT_MODEL, help="Modèle Whisper envoyé dans le champ model (défaut : EMO_STT_MODEL ou Whisper-Small)")
     parser.add_argument("--reports-dir", type=Path, default=ROOT / "reports")
     args = parser.parse_args()
     STT_MODEL = args.stt_model
