@@ -136,7 +136,7 @@ def observe(label, confidence, now):
 def select_providers(available, override=""):
     """Prefer an accelerator, but only when the installed runtime provides it."""
     chosen = [p.strip() for p in override.split(",") if p.strip()]
-    return chosen or [p for p in PROVIDER_ORDER if p in available][:1]
+    return chosen or [p for p in PROVIDER_ORDER if p in available]
 
 
 def onnx_audio_vote(wav):
@@ -146,6 +146,7 @@ def onnx_audio_vote(wav):
         return audio_command_vote(wav)
     try:
         import onnxruntime as ort
+        import numpy as np
     except ImportError:
         log("onnxruntime is unavailable; falling back to EMO_AUDIO_CMD")
         return audio_command_vote(wav)
@@ -160,11 +161,11 @@ def onnx_audio_vote(wav):
             samples = array.array("h", pcm.readframes(frames))
         if sys.byteorder != "little":
             samples.byteswap()
-        signal = [sample / 32768.0 for sample in samples]
+        signal = np.array([sample / 32768.0 for sample in samples], dtype=np.float32)
         session, names = _onnx_session(model)
         inputs = {names[0]: signal}
         if len(names) == 2:
-            inputs[names[1]] = 16000
+            inputs[names[1]] = np.array(16000, dtype=np.int64)
         features = session.run(None, inputs)[0]
         logits = classify_logits(features)
         confidence, index = softmax(logits)
@@ -181,13 +182,14 @@ _onnx_lock = threading.Lock()
 
 def classify_logits(output):
     """Use native 9-logit output, or mean-pool [B,T,D] features through the head."""
-    if isinstance(output, (list, tuple)):
-        first = output[0]
-        if first and not isinstance(first[0], (list, tuple)):
-            return first
-        features = first
-    else:  # numpy is optional at test time: ONNX outputs expose tolist().
-        features = output[0].tolist()
+    if hasattr(output, "tolist"):
+        output = output.tolist()
+    first = output[0]
+    if first and not isinstance(first[0], (list, tuple)):
+        return first
+    if not env("EMO_AUDIO_HEAD"):
+        raise ValueError("feature-only ONNX requires EMO_AUDIO_HEAD")
+    features = first
     pooled = [sum(frame[i] for frame in features) / len(features)
               for i in range(len(features[0]))]
     head = _audio_head()
@@ -206,7 +208,6 @@ def _audio_head():
                 bias = value.get("bias", value.get("biases", bias))
     if weight is None or bias is None:
         raise ValueError("EMO_AUDIO_HEAD must contain weight and bias arrays")
-    # Some exports store [D,C] instead of the usual linear [C,D].
     if len(weight[0]) != len(bias):
         weight = list(map(list, zip(*weight)))
     return weight, bias
@@ -313,9 +314,6 @@ def fuse(audio, text, now=None):
     return fusion.fuse(audio, text, now)
 
 
-def audio_command_name():
-    return env("EMO_AUDIO_CMD")
-
 def log(msg):
     print(time.strftime("%H:%M:%S"), msg, flush=True)
 
@@ -355,7 +353,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         try:
             while True:
-                chunk = response.read(4096)
+                chunk = response.read1(16384)
                 if not chunk:
                     break
                 self.wfile.write(f"{len(chunk):X}\r\n".encode() + chunk + b"\r\n")
@@ -368,7 +366,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def _transcribe(self, body):
         parts = {}
-        other_fields = {}
         content_type = self.headers.get("Content-Type", "")
         if not content_type.lower().startswith("multipart/form-data"):
             self._json(400, {"error": "expected multipart WAV"})
