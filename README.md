@@ -77,7 +77,7 @@ Le cahier de test et son automate couvrent les six émotions, les labels bruts, 
 
 ```bash
 python3 sidecar/tests/run_emotion_tests.py --mode mock
-python3 sidecar/tests/run_emotion_tests.py --mode live --url http://nimbus:13306 --audio-dir sidecar/tests/samples
+python3 sidecar/tests/run_emotion_tests.py --mode live --url http://nimbus:13306 --audio-dir sidecar/tests/samples/ravdess
 ```
 
 Consulter [`sidecar/tests/CAHIER_DE_TEST.md`](sidecar/tests/CAHIER_DE_TEST.md) pour le détail, les rapports et le téléchargement sélectif d'échantillons RAVDESS sous CC BY-NC-SA 4.0.

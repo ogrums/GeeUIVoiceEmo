@@ -1,6 +1,9 @@
 reports/
-samples/
 __pycache__/
-*.wav
 *.mp3
 *.flac
+# Tout audio téléchargé reste local, sauf le petit corpus RAVDESS attribué.
+*.wav
+!samples/ravdess/
+!samples/ravdess/*.wav
+samples/Audio_Speech_Actors_01-24.zip
