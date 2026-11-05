@@ -43,7 +43,7 @@ Chaque cas envoie un WAV de 1,2 s. Le classifieur simulé renvoie le label brut 
 | EDGE-04 | Fichier corrompu | Octets non audio nommés `corrompu.wav` | HTTP 400 de l'amont conservé, pas de champ `emotion` |
 | EDGE-05 | Champ manquant | Multipart sans partie `file` | HTTP 400, `{"error":"missing audio file"}` |
 | EDGE-06 | Fichier volumineux | WAV de 3 s suivi d'environ 2 Mio de données | HTTP 200, pas de troncature ni de crash, `neutral` |
-| EDGE-07 | Champ `model` absent | Multipart avec `file` mais sans `model` | HTTP 200 ; le sidecar ajoute `model=EMO_STT_MODEL` (défaut `whisper-small`) avant d'appeler Lemonade, qui l'exige |
+| EDGE-07 | Champ `model` absent | Multipart avec `file` mais sans `model` | HTTP 200 ; le sidecar ajoute `model=EMO_STT_MODEL` (défaut `Whisper-Small`) avant d'appeler Lemonade, qui l'exige |
 | CONF-01 | Modèle absent | `EMO_AUDIO_ONNX` et `EMO_AUDIO_CMD` vides | HTTP 200, repli `neutral` sans erreur |
 | CONF-02 | Modèle mal configuré | `EMO_AUDIO_ONNX=/chemin/inexistant.onnx` | HTTP 200, erreur ONNX interceptée, repli `neutral` |
 | UP-01 | Lemonade arrêté | URL amont vers un port local fermé | HTTP 500 contrôlé `{"error":"URLError"}`, le serveur continue |
@@ -69,7 +69,7 @@ python3 sidecar/tests/run_emotion_tests.py --mode mock
 
 # Vrais fichiers, émotion attendue lue dans manifest.csv
 python3 sidecar/tests/run_emotion_tests.py --mode live \
-  --url http://nimbus:13306 --stt-model whisper-small
+  --url http://nimbus:13306 --stt-model Whisper-Small
 
 # Dossier explicite équivalent (valeur par défaut) :
 # --audio-dir sidecar/tests/samples/ravdess
