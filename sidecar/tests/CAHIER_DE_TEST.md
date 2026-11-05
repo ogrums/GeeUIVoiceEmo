@@ -10,7 +10,7 @@ La réponse de transcription attendue conserve le JSON Whisper et ajoute `emotio
 
 - Python 3.9 ou supérieur ; **aucune dépendance Python supplémentaire** pour le script de campagne (bibliothèque standard).
 - En live : sidecar accessible, Lemonade et modèles configurés ; WAV PCM 16 kHz, mono, 16 bits.
-- Les échantillons et rapports sont locaux et exclus de Git.
+- Le petit corpus RAVDESS attribué est versionné ; les autres téléchargements et rapports restent exclus de Git.
 
 ## Cas de test
 
@@ -22,9 +22,12 @@ La réponse de transcription attendue conserve le JSON Whisper et ajoute `emotio
 | EMO-04 | Peur | WAV ≥ 1 s ; label forcé `fear` (alias de `fearful`) | HTTP 200 ; `emotion=fear` |
 | EMO-05 | Surprise | WAV ≥ 1 s ; label forcé `surprise` (alias de `surprised`) | HTTP 200 ; `emotion=surprise` |
 | EMO-06 | Neutralité | WAV ≥ 1 s ; label forcé `neutral` | HTTP 200 ; `emotion=neutral` |
-| EMO-07 | Repli du dégoût | Label brut forcé `disgusted` | `emotion=neutral` |
-| EMO-08 | Repli de « autre » | Label brut forcé `other` | `emotion=neutral` |
-| EMO-09 | Repli d'inconnu | Label brut forcé `unknown` | `emotion=neutral` |
+| EMO-07 | Calme RAVDESS | Label brut `calm` | `emotion=neutral` |
+| EMO-08 | Repli du dégoût | Label brut `disgusted` (code 07) | `emotion=neutral` |
+| EMO-09 | Surprise RAVDESS | Label brut `surprised` (code 08) | `emotion=surprise` |
+| EMO-10 | Repli d'inconnu | Label brut `unknown` | `emotion=neutral` |
+
+Les scénarios mock couvrent donc les huit codes RAVDESS, `other` et `unknown` en plus des six émotions robot.
 | EDGE-01 | Clip trop court | WAV tonal de 0,5 s ; vrai classifieur, sans modèle | HTTP 200 ; `neutral`, confiance 0 ; aucun appel ONNX nécessaire |
 | EDGE-02 | Silence | WAV de silence de 1,2 s ; label `neutral` simulé | Réponse valide ; `neutral` |
 | EDGE-03 | Bruit | WAV de bruit pseudo-aléatoire de 1,2 s ; label `neutral` simulé | Réponse valide ; `neutral` |
@@ -50,31 +53,38 @@ python3 sidecar/tests/run_emotion_tests.py --mode mock
 
 # Vrais fichiers ; le nom doit contenir happy, sad, angry, fear, surprise ou neutral
 python3 sidecar/tests/run_emotion_tests.py --mode live \
-  --url http://nimbus:13306 --audio-dir sidecar/tests/samples
+  --url http://nimbus:13306
+
+# Dossier explicite équivalent (valeur par défaut) :
+# --audio-dir sidecar/tests/samples/ravdess
 ```
 
 Un `manifest.csv` facultatif dans le dossier prioritaire sur les noms contient `file,expected_emotion`, par exemple :
 
 ```csv
-file,expected_emotion
-happy_03-01-03-02-01-01-01.wav,happy
-sad_03-01-04-02-01-01-01.wav,sad
+file,ravdess_label,expected_emotion
+03-01-03-02-01-01-01.wav,happy,happy
+03-01-08-02-01-01-01.wav,surprised,surprise
 ```
 
-Les échantillons RAVDESS ne comprennent pas la surprise. Pour couvrir cette classe en live, ajouter un fichier licencié séparément, avec `surprise` dans son nom ou dans le manifeste. Le mode live ajoute systématiquement les cas court, silence et bruit. Les fichiers corrompus, champ manquant, gros fichier, panne amont, mauvais ONNX et proxies sont validés en mock.
+RAVDESS contient huit codes : neutral, calm, happy, sad, angry, fearful, disgusted et surprised. Le manifeste conserve le label brut ; calm et disgusted sont attendus comme neutral. Le rapport live fournit l'exactitude par label brut et par émotion robot, ainsi que la matrice de confusion robot. Le mode live ajoute les cas court, silence et bruit. Les autres erreurs sont validées en mock.
 
 Les rapports `RAPPORT.md`, `resultats.json` et `rapport.html` sont créés dans `sidecar/tests/reports/<horodatage>/`. Le JSON contient les réponses détaillées, l'exactitude par émotion, la matrice de confusion et les latences. Le HTML est autonome.
 
 ## Jeu d'échantillons réels
 
-RAVDESS (Livingstone & Russo, 2018), Zenodo **1188976**, est sous **CC BY-NC-SA 4.0** : attribution, usage non commercial et partage dans les mêmes conditions. L'archive de parole fait environ 199 Mio. Le téléchargeur utilise `remotezip` pour ne récupérer que la table ZIP et cinq fichiers (neutral, happy, sad, angry, fear), et crée le manifeste :
+RAVDESS (Livingstone & Russo, 2018, PLoS ONE 13(5): e0196391), Zenodo **10.5281/zenodo.1188976**, est sous **CC BY-NC-SA 4.0**. Voir `samples/ravdess/SOURCE.md` pour l'attribution complète, la liste et les modifications. Les 24 WAV convertis, trois par expression, sont commités et totalisent moins de 3 Mio.
 
 ```bash
+# Téléchargement sélectif par défaut (24 WAV, nécessite remotezip)
 python3 -m pip install remotezip
-python3 sidecar/tests/fetch_samples.py --output-dir sidecar/tests/samples
+python3 sidecar/tests/fetch_samples.py --output-dir sidecar/tests/samples/ravdess
+
+# Alternative : archive complète (199 Mio), extraction des 1440 WAV
+python3 sidecar/tests/fetch_samples.py --full --output-dir sidecar/tests/samples/ravdess-full
 ```
 
-Aucun audio n'est commité. L'attribution et la licence doivent accompagner toute redistribution des WAV.
+L'option `--full` télécharge exactement `https://zenodo.org/records/1188976/files/Audio_Speech_Actors_01-24.zip?download=1`. Aucune dépendance externe n'est requise dans ce mode. Le ZIP et les fichiers hors du petit corpus commité restent ignorés par Git.
 
 ## Tests unitaires existants
 

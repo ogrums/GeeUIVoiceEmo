@@ -35,6 +35,8 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parent
 EMOTIONS = ("happy", "sad", "angry", "fear", "surprise", "neutral")
 RAW_NEUTRAL = ("disgusted", "other", "unknown")
+MOCK_CLASSIFIER = os.environ.get("GEEUI_MOCK_CLASSIFIER", "1") != "0"
+RAVDESS_LABELS = ("neutral", "calm", "happy", "sad", "angry", "fearful", "disgusted", "surprised")
 
 
 def wav_bytes(seconds=1.2, kind="tone"):
@@ -203,7 +205,7 @@ class MockHarness:
         # sans modifier le code de production ni réseau externe.
         original = self.server.onnx_audio_vote
         def classifier(audio):
-            for label in EMOTIONS + RAW_NEUTRAL:
+            for label in RAVDESS_LABELS + EMOTIONS + RAW_NEUTRAL:
                 marker = ("GEEUI-" + label).encode()
                 if marker in audio:
                     # Les labels bruts non robot sont convertis exactement comme le
@@ -241,17 +243,20 @@ def run_mock():
     harness = MockHarness()
     campaign = Campaign()
     harness.start()
-    harness.force_labels()
+    if MOCK_CLASSIFIER:
+        harness.force_labels()
     audio = wav_bytes()
     try:
-        for index, label in enumerate(EMOTIONS + RAW_NEUTRAL, 1):
+        for index, label in enumerate(RAVDESS_LABELS + RAW_NEUTRAL[1:], 1):
             marked = audio + b"GEEUI-" + label.encode()  # queue RIFF ignorée par wave
             expected = harness.server.parse_label(label)
             check_transcription(campaign, harness.url, f"EMO-{index:02d}", label + ".wav", marked, expected,
                                 passthrough=(label == "happy"))
+            campaign.cases[-1]["details"]["ravdess_label"] = label
         harness.server.onnx_audio_vote = harness.original_vote
         check_transcription(campaign, harness.url, "EDGE-01", "court.wav", wav_bytes(0.5), "neutral")
-        harness.force_labels()
+        if MOCK_CLASSIFIER:
+            harness.force_labels()
         check_transcription(campaign, harness.url, "EDGE-02", "silence.wav", wav_bytes(kind="silence") + b"GEEUI-neutral", "neutral")
         check_transcription(campaign, harness.url, "EDGE-03", "bruit.wav", wav_bytes(kind="noise") + b"GEEUI-neutral", "neutral")
         status, _, raw, elapsed = transcription(harness.url, "corrompu.wav", b"ceci n'est pas un WAV")
@@ -271,7 +276,8 @@ def run_mock():
         os.environ["EMO_AUDIO_ONNX"] = "/chemin/inexistant.onnx"
         check_transcription(campaign, harness.url, "CONF-02", "modele-invalide.wav", audio, "neutral")
         os.environ["EMO_AUDIO_ONNX"] = ""
-        harness.force_labels()
+        if MOCK_CLASSIFIER:
+            harness.force_labels()
 
         # Panne amont : port local volontairement fermé.
         with socket.socket() as sock:
@@ -349,6 +355,11 @@ def run_live(url, audio_dir):
     if not rows:
         raise RuntimeError(f"Aucun WAV ni manifest.csv exploitable dans {audio_dir}")
     observations = []
+    if manifest.exists():
+        with manifest.open(newline="", encoding="utf-8") as stream:
+            raw_by_file = {audio_dir / row["file"]: row.get("ravdess_label", "non_precise") for row in csv.DictReader(stream)}
+    else:
+        raw_by_file = {}
     for index, (path, expected) in enumerate(rows, 1):
         if not path.is_file() or expected not in EMOTIONS:
             campaign.add(f"LIVE-{index:03d}", str(path), False, "Fichier existant et émotion valide", "Entrée invalide", 0)
@@ -356,7 +367,9 @@ def run_live(url, audio_dir):
         check_transcription(campaign, url, f"LIVE-{index:03d}", path.name, path.read_bytes(), expected)
         case = campaign.cases[-1]
         observed = case["details"].get("reponse", {}).get("emotion")
-        observations.append((expected, observed))
+        raw_label = raw_by_file.get(path, "non_precise")
+        campaign.cases[-1]["details"]["ravdess_label"] = raw_label
+        observations.append((expected, observed, raw_label))
     # Cas systématiques générés localement, sans écrire de WAV dans le dépôt.
     for case_id, name, data in (("LIVE-SHORT", "court.wav", wav_bytes(0.5)),
                                 ("LIVE-SILENCE", "silence.wav", wav_bytes(kind="silence")),
@@ -371,23 +384,30 @@ def write_reports(campaign, observations, mode, target, destination):
     failed = len(campaign.cases) - passed
     latencies = [c["latence_ms"] for c in campaign.cases if c["latence_ms"] > 0]
     matrix = {expected: {observed: 0 for observed in EMOTIONS + ("autre/erreur",)} for expected in EMOTIONS}
-    for expected, observed in observations:
+    raw_accuracy = {}
+    for expected, observed, raw_label in observations:
         matrix[expected][observed if observed in EMOTIONS else "autre/erreur"] += 1
+        total, correct = raw_accuracy.get(raw_label, (0, 0))
+        raw_accuracy[raw_label] = (total + 1, correct + (expected == observed))
+    raw_accuracy = {label: correct / total for label, (total, correct) in raw_accuracy.items()}
     accuracy = None
     if observations:
-        accuracy = {e: (sum(1 for a, b in observations if a == e and b == e) / max(1, sum(1 for a, b in observations if a == e))) for e in EMOTIONS}
-        accuracy = {e: v for e, v in accuracy.items() if any(a == e for a, _ in observations)}
+        accuracy = {e: (sum(1 for a, b, _ in observations if a == e and b == e) / max(1, sum(1 for a, b, _ in observations if a == e))) for e in EMOTIONS}
+        accuracy = {e: v for e, v in accuracy.items() if any(a == e for a, _, _ in observations)}
     data = {"mode": mode, "cible": target, "date": datetime.now().astimezone().isoformat(),
             "resume": {"total": len(campaign.cases), "reussis": passed, "echoues": failed},
             "latence_ms": {"moyenne": statistics.mean(latencies) if latencies else None, "p95": percentile95(latencies)},
-            "exactitude_par_emotion": accuracy, "matrice_de_confusion": matrix if observations else None,
+            "exactitude_par_emotion_robot": accuracy, "exactitude_par_label_ravdess": raw_accuracy or None,
+            "matrice_de_confusion": matrix if observations else None,
             "cas": campaign.cases}
     (destination / "resultats.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     lines = [f"# Rapport de test sidecar — {mode}", "", f"- Date : {data['date']}", f"- Cible : `{target}`",
              f"- **Résultat : {passed}/{len(campaign.cases)} réussis, {failed} échoué(s)**",
              f"- Latence moyenne : {data['latence_ms']['moyenne'] and round(data['latence_ms']['moyenne'], 2)} ms ; p95 : {data['latence_ms']['p95'] and round(data['latence_ms']['p95'], 2)} ms", ""]
     if accuracy is not None:
-        lines += ["## Exactitude par émotion", ""] + [f"- {e} : {v:.1%}" for e, v in accuracy.items()] + ["", "## Matrice de confusion (lignes = attendu)", ""]
+        lines += ["## Exactitude par émotion robot", ""] + [f"- {e} : {v:.1%}" for e, v in accuracy.items()]
+        lines += ["", "## Exactitude par label brut RAVDESS", ""] + [f"- {e} : {v:.1%}" for e, v in raw_accuracy.items()]
+        lines += ["", "## Matrice de confusion robot (lignes = attendu)", ""]
         columns = list(next(iter(matrix.values())))
         lines += ["| Attendu | " + " | ".join(columns) + " |", "|---|" + "---|" * len(columns)]
         lines += ["| " + e + " | " + " | ".join(str(matrix[e][c]) for c in columns) + " |" for e in matrix] + [""]
@@ -408,7 +428,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("mock", "live"), default="mock")
     parser.add_argument("--url", default="http://127.0.0.1:13306", help="URL du sidecar en mode live")
-    parser.add_argument("--audio-dir", type=Path, help="WAV et manifest.csv facultatif en mode live")
+    parser.add_argument("--audio-dir", type=Path, default=ROOT / "samples/ravdess", help="WAV et manifest.csv (défaut : corpus RAVDESS commité)")
     parser.add_argument("--reports-dir", type=Path, default=ROOT / "reports")
     args = parser.parse_args()
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -418,8 +438,6 @@ def main():
             campaign, observations = run_mock()
             target = "amont Lemonade simulé localement"
         else:
-            if not args.audio_dir:
-                parser.error("--audio-dir est obligatoire en mode live")
             campaign, observations = run_live(args.url.rstrip("/"), args.audio_dir)
             target = args.url
     except Exception as exc:
