@@ -27,18 +27,26 @@ class LabelTest(unittest.TestCase):
 
 
 class AudioTest(unittest.TestCase):
-    def wav(self, seconds=1):
+    def wav(self, seconds=1, amplitude=1000):
         raw = io.BytesIO()
         with wave.open(raw, "wb") as stream:
             stream.setnchannels(1)
             stream.setsampwidth(2)
             stream.setframerate(16000)
-            stream.writeframes(struct.pack("<h", 1000) * int(seconds * 16000))
+            stream.writeframes(struct.pack("<h", amplitude) * int(seconds * 16000))
         return raw.getvalue()
 
     def test_short_clip_skips_onnx_runner(self):
         with patch.object(server, "_onnx_session") as model:
             self.assertEqual(("neutral", 0.0), server.onnx_audio_vote(self.wav(0.1)))
+        model.assert_not_called()
+
+    def test_silence_skips_onnx_and_returns_neutral(self):
+        with patch.dict(os.environ, {"EMO_AUDIO_ONNX": "/fake/model.onnx"}, clear=False), \
+             patch.object(server, "_onnx_session") as model:
+            self.assertEqual(("neutral", 0.0), server.onnx_audio_vote(self.wav(1.2, amplitude=0)))
+            self.assertEqual("silence", server._onnx_local.source)
+            self.assertEqual(("neutral", 0.0), server.onnx_audio_vote(self.wav(1.2, amplitude=50)))
         model.assert_not_called()
 
     def test_onnx_receives_batched_float32_signal(self):

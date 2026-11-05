@@ -54,6 +54,7 @@ adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e sidecar http:
 | `EMO_AUDIO_MODEL` | `emotion2vec` |
 | `EMO_AUDIO_ONNX` | vide ; chemin du backbone ONNX emotion2vec+ |
 | `EMO_AUDIO_HEAD` | vide ; chemin de la tête JSON `weight`/`bias`/`labels` |
+| `EMO_MIN_RMS` | `0.003` ; si la trame de 20 ms la plus forte reste sous ce niveau RMS (≈ −50 dBFS), le clip est traité comme du silence : `neutral`, confiance 0, `emotion_source=silence`, sans appel au modèle |
 | `EMO_ORT_PROVIDERS` | vide ; choix automatique, sinon liste séparée par des virgules |
 | `EMO_AUDIO_LABELS` | non défini : labels du JSON, sinon ordre emotion2vec+ historique ; prioritaire si défini explicitement |
 | `EMO_STT_MODEL` | `Whisper-Small` |

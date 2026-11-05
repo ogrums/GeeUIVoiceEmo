@@ -247,8 +247,8 @@ def check_transcription(campaign, url, case_id, filename, audio, expected, passt
     if case_id == "EDGE-01":
         ok = ok and data.get("emotion_confidence") == 0.0
     if case_id.startswith("LIVE-") and case_id != "LIVE-SHORT":
-        inactive = (data.get("emotion_confidence") == 0.0
-                    or data.get("emotion_source") == "fallback")
+        inactive = (data.get("emotion_source") == "fallback"
+                    or (data.get("emotion_confidence") == 0.0 and data.get("emotion_source") != "silence"))
         if inactive:
             ok = False
             observation = "classifieur inactif (repli)"
