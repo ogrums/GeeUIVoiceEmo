@@ -8,7 +8,6 @@ Lemonade stays the Kokoro path. CosyVoice is a second host, off unless set.
 import array
 import concurrent.futures
 import io
-import re
 import json
 import math
 import os
@@ -148,7 +147,7 @@ def onnx_audio_vote(wav):
         import onnxruntime as ort
         import numpy as np
     except ImportError:
-        log("onnxruntime is unavailable; falling back to EMO_AUDIO_CMD")
+        log("onnxruntime/numpy unavailable; falling back to EMO_AUDIO_CMD")
         return audio_command_vote(wav)
     try:
         with wave.open(io.BytesIO(wav), "rb") as pcm:
@@ -224,10 +223,6 @@ def _onnx_session(model):
             if len(_onnx_names) not in (1, 2):
                 raise ValueError("expected an audio input and optional sampling-rate input")
         return _onnx, _onnx_names
-
-
-def _onnx_input_names():
-    return _onnx_names or ["input_values", "sampling_rate"]
 
 
 def _onnx_labels():
