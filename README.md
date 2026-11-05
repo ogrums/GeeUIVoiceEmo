@@ -52,6 +52,10 @@ adb shell am startservice -n com.geeui.voiceemo/.EmotionService -e sidecar http:
 | `COSYVOICE_MODEL` | `cosyvoice2` |
 | `EMO_AUDIO_CMD` | empty, audio vote is neutral |
 | `EMO_AUDIO_MODEL` | `emotion2vec` |
+| `EMO_AUDIO_ONNX` | vide ; chemin du backbone ONNX emotion2vec+ |
+| `EMO_AUDIO_HEAD` | vide ; chemin de la tête JSON `weight`/`bias`/`labels` |
+| `EMO_ORT_PROVIDERS` | vide ; choix automatique, sinon liste séparée par des virgules |
+| `EMO_AUDIO_LABELS` | non défini : labels du JSON, sinon ordre emotion2vec+ historique ; prioritaire si défini explicitement |
 | `EMO_STT_MODEL` | `Whisper-Small` |
 | `EMO_CHAT_MODEL` | `gemma4e-flash-e2b-FLM` |
 
@@ -67,7 +71,32 @@ The Android service takes the same names as extras (`sidecar`, `lemonade`, `cosy
 
 The unchanged stdlib server also exposes OpenAI-compatible routes on port 13306: `POST /v1/audio/transcriptions`, `POST /v1/chat/completions` (byte-preserving SSE), `POST /v1/audio/speech`, and `GET /v1/models`. They forward to `LEMONADE_HOST`. Transcription classifies the multipart WAV while Whisper runs and adds the audio-only `emotion` and `emotion_confidence` to its JSON. Fusion happens on the robot in `EmotionFusion` (emotion-core), the single source of truth: audio emotion 0.6 / LLM reply tag from `EmotionTagParser` 0.4, neutral below a best score of 0.45, and repeated non-neutral reactions suppressed for 4 s.
 
-Set `EMO_AUDIO_ONNX` to an emotion2vec+ ONNX file. The default labels are `angry, disgusted, fearful, happy, neutral, other, sad, surprised, unknown` and can be replaced with comma-separated `EMO_AUDIO_LABELS`. Input must be 16 kHz mono 16-bit PCM WAV; below one second, the vote is neutral. For the backbone export, `EMO_AUDIO_HEAD` points to a JSON linear head with `weight`/`bias` (nested objects and `weights`/`biases` are accepted), or `weight` can be `[D,C]`; a direct 9-logit model needs no head. Audio is mean-pooled over the feature sequence. Provider override is comma-separated `EMO_ORT_PROVIDERS`; otherwise the first available of CUDA, ROCm, MIGraphX, DirectML, Vitis AI and CPU is used. Without a model or `onnxruntime`, the previous `EMO_AUDIO_CMD` hook or neutral vote remains available. Install the hardware-matched ORT package separately, e.g. `onnxruntime` (CPU) or `onnxruntime-gpu` (CUDA); no other dependency was added.
+### Classifieur ONNX et diagnostic
+
+Installation et téléchargement du modèle de référence (les fichiers restent hors du dépôt) :
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install onnxruntime numpy
+mkdir -p models
+curl -fL -o models/emotion2vec_plus_base.onnx \
+  https://huggingface.co/ziyu12345/emotion2vec_plus_base_onnx/resolve/main/emotion2vec_plus_base.onnx
+curl -fL -o models/emotion2vec_head.json \
+  https://huggingface.co/ziyu12345/emotion2vec_plus_base_onnx/resolve/main/emotion2vec_head.json
+EMO_AUDIO_ONNX="$PWD/models/emotion2vec_plus_base.onnx" \
+EMO_AUDIO_HEAD="$PWD/models/emotion2vec_head.json" \
+.venv/bin/python sidecar/emo_server.py
+```
+
+Le WAV doit être PCM 16 kHz mono 16 bits ; en dessous d'une seconde, le vote reste `neutral`, confiance 0. Le backbone reçoit un tenseur `float32` de forme `[1, nombre_échantillons]`, plus éventuellement la fréquence d'échantillonnage en second argument. Les caractéristiques sont moyennées avec NumPy avant la couche linéaire. Les labels de `EMO_AUDIO_HEAD` sont normalisés (`快乐/happy` devient `happy`) et pris par défaut ; `EMO_AUDIO_LABELS` explicite est prioritaire, sinon l'ordre historique `angry, disgusted, fearful, happy, neutral, other, sad, surprised, unknown` est le dernier repli. Un modèle produisant directement les logits n'a pas besoin de tête.
+
+`GET /v1/emotion/status` expose le chemin et l'existence du modèle, la version ONNX Runtime, les fournisseurs disponibles/sélectionnés, la tête et ses labels, la session, la dernière erreur et les compteurs `classifications`/`failures`. Le démarrage charge le modèle immédiatement et journalise `ONNX prêt` ou un traceback (une fois par erreur distincte). Les transcriptions ajoutent `emotion_source` : `onnx` pour une vraie classification, `fallback` pour un clip court, un modèle absent/en échec ou le hook `EMO_AUDIO_CMD`. Pour diagnostiquer :
+
+```bash
+curl -s http://127.0.0.1:13306/v1/emotion/status | python3 -m json.tool
+```
+
+Vérifier `session_loaded=true`, `head_loaded=true`, `last_error=null`, puis `emotion_source=onnx` dans une transcription d'au moins une seconde. Les paquets `onnxruntime` (CPU) et `onnxruntime-gpu` (CUDA) s'installent séparément selon la machine.
 
 `FRENCH_EMOTION_SYSTEM_PROMPT` instructs a chat model to begin with one emotion tag. `EmotionTagParser` consumes that tag across streaming boundaries and removes it; `finish()` flushes an incomplete tag as ordinary text. Run Python checks with `python3 -m unittest discover -s sidecar -v`; Kotlin checks remain `./gradlew :emotion-core:test` when the wrapper is present.
 
