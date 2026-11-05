@@ -62,3 +62,11 @@ The Android service takes the same names as extras (`sidecar`, `lemonade`, `cosy
 ## Core
 
 `emotion-core` is plain Kotlin. `./gradlew :emotion-core:test`. Copy the Gradle wrapper from GeeUIVoice. SDK 30 to build `app/`.
+
+## Emotion gateway
+
+The unchanged stdlib server also exposes OpenAI-compatible routes on port 13306: `POST /v1/audio/transcriptions`, `POST /v1/chat/completions` (byte-preserving SSE), `POST /v1/audio/speech`, and `GET /v1/models`. They forward to `LEMONADE_HOST`. Transcription classifies the multipart WAV while Whisper runs and adds `emotion` and `emotion_confidence` to its JSON. The 0.6 audio / 0.4 text vote needs 0.5 confidence; repeated non-neutral reactions are suppressed for `EMO_COOLDOWN_S` (default 4 s).
+
+Set `EMO_AUDIO_ONNX` to an emotion2vec+ ONNX file. The default labels are `angry, disgusted, fearful, happy, neutral, other, sad, surprised, unknown` and can be replaced with comma-separated `EMO_AUDIO_LABELS`. Input must be 16 kHz mono 16-bit PCM WAV; below one second, the vote is neutral. For the backbone export, `EMO_AUDIO_HEAD` points to a JSON linear head with `weight`/`bias` (nested objects and `weights`/`biases` are accepted), or `weight` can be `[D,C]`; a direct 9-logit model needs no head. Audio is mean-pooled over the feature sequence. Provider override is comma-separated `EMO_ORT_PROVIDERS`; otherwise the first available of CUDA, ROCm, MIGraphX, DirectML, Vitis AI and CPU is used. Without a model or `onnxruntime`, the previous `EMO_AUDIO_CMD` hook or neutral vote remains available. Install the hardware-matched ORT package separately, e.g. `onnxruntime` (CPU) or `onnxruntime-gpu` (CUDA); no other dependency was added.
+
+`FRENCH_EMOTION_SYSTEM_PROMPT` instructs a chat model to begin with one emotion tag. `EmotionTagParser` consumes that tag across streaming boundaries and removes it; `finish()` flushes an incomplete tag as ordinary text. Run Python checks with `python3 -m unittest discover -s sidecar -v`; Kotlin checks remain `./gradlew :emotion-core:test` when the wrapper is present.

@@ -12,6 +12,7 @@ import re
 import json
 import math
 import os
+from pathlib import Path
 import subprocess
 import sys
 import tempfile
@@ -48,6 +49,7 @@ DEFAULTS = {
     "EMO_AUDIO_CMD": "",
     "EMO_AUDIO_MODEL": "emotion2vec",
     "EMO_AUDIO_ONNX": "",
+    "EMO_AUDIO_HEAD": "",
     "EMO_ORT_PROVIDERS": "",
     "EMO_AUDIO_LABELS": ",".join(ONNX_LABELS),
     "EMO_COOLDOWN_S": "4",
@@ -80,6 +82,7 @@ def config():
         "audio_cmd": env("EMO_AUDIO_CMD"),
         "audio_model": env("EMO_AUDIO_MODEL"),
         "audio_onnx": env("EMO_AUDIO_ONNX"),
+        "audio_head": env("EMO_AUDIO_HEAD"),
         "ort_providers": env("EMO_ORT_PROVIDERS"),
         "audio_labels": env("EMO_AUDIO_LABELS"),
         "cooldown_s": env("EMO_COOLDOWN_S"),
@@ -158,8 +161,12 @@ def onnx_audio_vote(wav):
         if sys.byteorder != "little":
             samples.byteswap()
         signal = [sample / 32768.0 for sample in samples]
-        inputs = [signal, 16000]
-        logits = _onnx_session(model).run(None, dict(zip(_onnx_input_names(), inputs)))[0][0]
+        session, names = _onnx_session(model)
+        inputs = {names[0]: signal}
+        if len(names) == 2:
+            inputs[names[1]] = 16000
+        features = session.run(None, inputs)[0]
+        logits = classify_logits(features)
         confidence, index = softmax(logits)
         return parse_label(_onnx_labels()[index]), confidence
     except Exception as exc:
@@ -172,6 +179,39 @@ _onnx_names = None
 _onnx_lock = threading.Lock()
 
 
+def classify_logits(output):
+    """Use native 9-logit output, or mean-pool [B,T,D] features through the head."""
+    if isinstance(output, (list, tuple)):
+        first = output[0]
+        if first and not isinstance(first[0], (list, tuple)):
+            return first
+        features = first
+    else:  # numpy is optional at test time: ONNX outputs expose tolist().
+        features = output[0].tolist()
+    pooled = [sum(frame[i] for frame in features) / len(features)
+              for i in range(len(features[0]))]
+    head = _audio_head()
+    return [bias + sum(value * weight for value, weight in zip(pooled, weights))
+            for weights, bias in zip(head[0], head[1])]
+
+
+def _audio_head():
+    raw = json.loads(Path(env("EMO_AUDIO_HEAD")).read_text())
+    weight = raw.get("weight", raw.get("weights", raw.get("Weight")))
+    bias = raw.get("bias", raw.get("biases", raw.get("Bias")))
+    if weight is None or bias is None:
+        for value in raw.values():
+            if isinstance(value, dict):
+                weight = value.get("weight", value.get("weights", weight))
+                bias = value.get("bias", value.get("biases", bias))
+    if weight is None or bias is None:
+        raise ValueError("EMO_AUDIO_HEAD must contain weight and bias arrays")
+    # Some exports store [D,C] instead of the usual linear [C,D].
+    if len(weight[0]) != len(bias):
+        weight = list(map(list, zip(*weight)))
+    return weight, bias
+
+
 def _onnx_session(model):
     global _onnx, _onnx_names
     with _onnx_lock:
@@ -180,7 +220,9 @@ def _onnx_session(model):
             providers = select_providers(ort.get_available_providers(), env("EMO_ORT_PROVIDERS"))
             _onnx = ort.InferenceSession(model, providers=providers)
             _onnx_names = [value.name for value in _onnx.get_inputs()]
-        return _onnx
+            if len(_onnx_names) not in (1, 2):
+                raise ValueError("expected an audio input and optional sampling-rate input")
+        return _onnx, _onnx_names
 
 
 def _onnx_input_names():
