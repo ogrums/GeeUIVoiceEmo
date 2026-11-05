@@ -76,25 +76,5 @@ class ProviderTest(unittest.TestCase):
         ))
 
 
-class FusionTest(unittest.TestCase):
-    def test_sixty_forty_weights_and_threshold(self):
-        self.assertEqual(("sad", 0.54), server.ReactionFusion().fuse(
-            ("sad", 0.9), ("happy", 0.9), now=10
-        ))
-        self.assertEqual("neutral", server.ReactionFusion().fuse(
-            ("angry", 0.8), ("happy", 0.8), now=10
-        )[0])
-        self.assertEqual("neutral", server.ReactionFusion().fuse(
-            ("happy", 0.8), ("neutral", 0.0), now=10
-        )[0])
-
-    def test_cooldown_applies_only_to_non_neutral(self):
-        fused = server.ReactionFusion(cooldown_s=4)
-        self.assertEqual("happy", fused.fuse(("happy", 1), ("happy", 1), now=10)[0])
-        self.assertEqual("neutral", fused.fuse(("sad", 1), ("sad", 1), now=11)[0])
-        self.assertEqual("neutral", fused.fuse(("neutral", 1), ("neutral", 1), now=12)[0])
-        self.assertEqual("sad", fused.fuse(("sad", 1), ("sad", 1), now=14)[0])
-
-
 if __name__ == "__main__":
     unittest.main()

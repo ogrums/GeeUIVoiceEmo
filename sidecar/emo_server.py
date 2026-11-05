@@ -265,50 +265,6 @@ def audio_vote(wav):
     return onnx_audio_vote(wav)
 
 
-def fuse_votes(audio, text):
-    """Weighted 0.6/0.4 vote, ignoring missing labels and low-confidence results."""
-    merged = max(((parse_label(label), max(0.0, min(1.0, float(confidence))) * weight)
-                  for (label, confidence), weight in ((audio, 0.6), (text, 0.4))),
-                 key=lambda vote: vote[1])
-    return merged if merged[1] >= 0.5 else ("neutral", merged[1])
-
-
-class ReactionFusion:
-    """Suppress repeated non-neutral reactions during a monotonic-time cooldown."""
-
-    def __init__(self, cooldown_s=4.0, min_confidence=0.5):
-        self.cooldown_s = cooldown_s
-        self.min_confidence = min_confidence
-        self.last_reaction = None
-        self.lock = threading.Lock()
-
-    def fuse(self, audio, text, now=None):
-        label, confidence = fuse_votes(audio, text)
-        if confidence < self.min_confidence:
-            label = "neutral"
-        if label != "neutral":
-            with self.lock:
-                now = time.monotonic() if now is None else now
-                if self.last_reaction is not None and now - self.last_reaction < self.cooldown_s:
-                    return "neutral", confidence
-                self.last_reaction = now
-        return label, confidence
-
-
-def text_vote(text):
-    """A transcript contributes only an explicit leading tag, not keyword guesses."""
-    match = re.match(r"\s*\[([a-zA-Z]+)\]", text or "")
-    return (parse_label(match.group(1)), 1.0) if match else ("neutral", 0.0)
-
-
-fusion = ReactionFusion()
-
-
-def fuse(audio, text, now=None):
-    fusion.cooldown_s = float(env("EMO_COOLDOWN_S"))
-    return fusion.fuse(audio, text, now)
-
-
 def log(msg):
     print(time.strftime("%H:%M:%S"), msg, flush=True)
 
@@ -389,13 +345,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._raw(response.status, raw, response.headers.get("Content-Type"))
                 return
             label, confidence = classified.result()
-            text = json.loads(raw.decode()).get("text", "")
-            text_label = text_vote(text)
-            reacted, fused_confidence = fuse((label, confidence), text_label)
-            observe(reacted, fused_confidence, time.time())
+            observe(label, confidence, time.time())
             payload = json.loads(raw.decode())
-            payload["emotion"] = reacted
-            payload["emotion_confidence"] = fused_confidence
+            payload["emotion"] = label
+            payload["emotion_confidence"] = confidence
             self._json(response.status, payload)
         finally:
             executor.shutdown(wait=True)
