@@ -48,6 +48,7 @@ DEFAULTS = {
     "EMO_AUDIO_MODEL": "emotion2vec",
     "EMO_AUDIO_ONNX": "",
     "EMO_AUDIO_HEAD": "",
+    "EMO_MIN_RMS": "0.003",
     "EMO_ORT_PROVIDERS": "",
     "EMO_AUDIO_LABELS": ",".join(ONNX_LABELS),
     "EMO_STT_MODEL": "Whisper-Small",
@@ -172,6 +173,13 @@ def onnx_audio_vote(wav):
                 return "neutral", 0.0
             samples = pcm.readframes(frames)
         signal = np.frombuffer(samples, dtype="<i2").astype(np.float32) / 32768.0
+        # Silence ou quasi-silence : emotion2vec répond n'importe quoi (ex. surprise à 98 %).
+        # On mesure la trame de 20 ms la plus forte : une voix douce avec des blancs reste classée.
+        usable = signal[: len(signal) // 320 * 320].reshape(-1, 320)
+        loudest = float(np.sqrt(np.mean(np.square(usable), axis=1)).max()) if usable.size else 0.0
+        if loudest < float(env("EMO_MIN_RMS") or 0):
+            _onnx_local.source = "silence"
+            return "neutral", 0.0
         session, names = _onnx_session(model)
         inputs = {names[0]: signal.reshape(1, -1)}
         if len(names) == 2:

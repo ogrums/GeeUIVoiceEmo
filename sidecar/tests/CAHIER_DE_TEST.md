@@ -64,7 +64,7 @@ Total mock : 26 cas. Le faux Lemonade refuse, comme le vrai, une transcription s
 
 ### Mode live
 
-Le préflight `PRE-01` est inclus dans le rapport JSON et Markdown. Un cas par WAV du dossier audio suit (24 avec le corpus RAVDESS commité, 3 par expression). Le résultat attendu vient de la colonne `expected_emotion` du manifeste. Pour tout clip d'au moins une seconde, une confiance 0 ou `emotion_source=fallback` fait échouer le cas avec `classifieur inactif (repli)`, même si `neutral` est attendu. Le mode live ajoute aussi trois cas synthétiques, `LIVE-SHORT` (0,5 s, exempté), `LIVE-SILENCE` et `LIVE-NOISE` ; les autres erreurs ne sont validées qu'en mock.
+Le préflight `PRE-01` est inclus dans le rapport JSON et Markdown. Un cas par WAV du dossier audio suit (24 avec le corpus RAVDESS commité, 3 par expression). Le résultat attendu vient de la colonne `expected_emotion` du manifeste. Pour tout clip d'au moins une seconde, `emotion_source=fallback`, ou une confiance 0 hors silence, fait échouer le cas avec `classifieur inactif (repli)`, même si `neutral` est attendu. `LIVE-SILENCE` doit renvoyer `neutral` avec `emotion_source=silence` : un signal dont la trame de 20 ms la plus forte reste sous `EMO_MIN_RMS` (0,003 par défaut, environ −50 dBFS) n'est pas envoyé au modèle. Le mode live ajoute aussi trois cas synthétiques, `LIVE-SHORT` (0,5 s, exempté), `LIVE-SILENCE` et `LIVE-NOISE` ; les autres erreurs ne sont validées qu'en mock.
 
 ## Exécution
 
