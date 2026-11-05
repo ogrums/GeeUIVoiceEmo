@@ -4,7 +4,7 @@
 
 Cette campagne valide `sidecar/emo_server.py` et ses routes OpenAI compatibles. Le mode **mock** teste le serveur HTTP réel, lancé dans le processus de test, avec un serveur Lemonade local simulé et un classifieur déterministe. Il ne requiert ni réseau, ni ONNX Runtime, ni modèle. Le mode **live** envoie de vrais WAV à un sidecar déjà démarré.
 
-La réponse de transcription attendue conserve le JSON Whisper et ajoute `emotion` (une des six émotions robot) et `emotion_confidence` (nombre entre 0 et 1). Les labels ONNX sont, dans l'ordre : `angry, disgusted, fearful, happy, neutral, other, sad, surprised, unknown`. `fearful` devient `fear`, `surprised` devient `surprise` ; `disgusted`, `other` et `unknown` deviennent `neutral`. Un WAV de moins d'une seconde renvoie `neutral` avec une confiance de 0.
+La réponse de transcription attendue conserve le JSON Whisper et ajoute `emotion` (une des six émotions robot), `emotion_confidence` (nombre entre 0 et 1) et `emotion_source` (`onnx` ou `fallback`). Les labels proviennent du JSON de tête, normalisés après `/` et en minuscules ; `EMO_AUDIO_LABELS` explicite est prioritaire. Le dernier repli est `angry, disgusted, fearful, happy, neutral, other, sad, surprised, unknown`. `fearful` devient `fear`, `surprised` devient `surprise` ; `disgusted`, `other` et `unknown` deviennent `neutral`. Un WAV de moins d'une seconde renvoie `neutral` avec une confiance de 0.
 
 ## Préparation
 
@@ -15,6 +15,13 @@ La réponse de transcription attendue conserve le JSON Whisper et ajoute `emotio
 ## Cas de test
 
 Les identifiants et l'ordre ci-dessous correspondent exactement à ceux du script `run_emotion_tests.py` et du rapport.
+
+### Diagnostic (mock et live)
+
+| ID | Objectif | Entrée / simulation | Résultat attendu |
+|---|---|---|---|
+| STATUS-01 | État du classifieur sans modèle | GET `/v1/emotion/status` en mock | HTTP 200, `session_loaded=false`, `onnx_configured=false`, compteurs présents |
+| PRE-01 | Préflight ONNX en live | GET `/v1/emotion/status` avant les WAV | `session_loaded=true`, sinon FAIL avec la dernière erreur |
 
 ### Émotions (mock)
 
@@ -53,11 +60,11 @@ Chaque cas envoie un WAV de 1,2 s. Le classifieur simulé renvoie le label brut 
 | PROXY-03 | Modèles | GET `/v1/models` | HTTP 200, JSON de l'amont inchangé |
 | PERF-01 | Latence | Cinq transcriptions successives | 5 mesures valides ; moyenne et p95 dans le rapport, sans seuil imposé |
 
-Total mock : 25 cas. Le faux Lemonade refuse, comme le vrai, une transcription sans champ `model` (HTTP 400 `missing_argument`).
+Total mock : 26 cas. Le faux Lemonade refuse, comme le vrai, une transcription sans champ `model` (HTTP 400 `missing_argument`).
 
 ### Mode live
 
-Un cas par WAV du dossier audio (24 avec le corpus RAVDESS commité, 3 par expression). Le résultat attendu vient de la colonne `expected_emotion` du manifeste. Le mode live ajoute aussi trois cas synthétiques, `LIVE-SHORT` (0,5 s), `LIVE-SILENCE` et `LIVE-NOISE` ; les autres erreurs ne sont validées qu'en mock.
+Le préflight `PRE-01` est inclus dans le rapport JSON et Markdown. Un cas par WAV du dossier audio suit (24 avec le corpus RAVDESS commité, 3 par expression). Le résultat attendu vient de la colonne `expected_emotion` du manifeste. Pour tout clip d'au moins une seconde, une confiance 0 ou `emotion_source=fallback` fait échouer le cas avec `classifieur inactif (repli)`, même si `neutral` est attendu. Le mode live ajoute aussi trois cas synthétiques, `LIVE-SHORT` (0,5 s, exempté), `LIVE-SILENCE` et `LIVE-NOISE` ; les autres erreurs ne sont validées qu'en mock.
 
 ## Exécution
 
@@ -109,3 +116,7 @@ L'option `--full` télécharge exactement `https://zenodo.org/records/1188976/fi
 ```bash
 python3 -m unittest discover -s sidecar -v
 ```
+
+### Non-régression ONNX
+
+`test_onnx_receives_batched_float32_signal` utilise une fausse session et exige un tenseur `float32` de forme `(1, 16000)`. `test_external_head_pool_and_linear_layer` vérifie le pooling et le produit matriciel ; `test_head_labels_override_default_and_normalize` vérifie la lecture et la normalisation des labels du JSON. Les erreurs ONNX réelles restent des replis contrôlés dans les cas CONF, mais sont désormais visibles dans le statut et le journal.

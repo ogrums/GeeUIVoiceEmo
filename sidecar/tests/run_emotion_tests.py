@@ -246,11 +246,21 @@ def check_transcription(campaign, url, case_id, filename, audio, expected, passt
     ok = status == 200 and data.get("emotion") == expected and isinstance(data.get("emotion_confidence"), (float, int))
     if case_id == "EDGE-01":
         ok = ok and data.get("emotion_confidence") == 0.0
+    if case_id.startswith("LIVE-") and case_id != "LIVE-SHORT":
+        inactive = (data.get("emotion_confidence") == 0.0
+                    or data.get("emotion_source") == "fallback")
+        if inactive:
+            ok = False
+            observation = "classifieur inactif (repli)"
+        else:
+            observation = f"HTTP {status}, emotion={data.get('emotion')}, confiance={data.get('emotion_confidence')}"
+    else:
+        observation = f"HTTP {status}, emotion={data.get('emotion')}, confiance={data.get('emotion_confidence')}"
     if passthrough:
         ok = ok and data.get("text") == "bonjour le robot" and data.get("language") == "fr" and data.get("segments") == [{"id": 0, "text": "bonjour"}]
     campaign.add(case_id, f"Transcription et émotion {expected}", ok,
                  f"HTTP 200, emotion={expected}, confiance numérique",
-                 f"HTTP {status}, emotion={data.get('emotion')}, confiance={data.get('emotion_confidence')}", elapsed,
+                 observation, elapsed,
                  {"reponse": data})
 
 
@@ -262,6 +272,14 @@ def run_mock():
         harness.force_labels()
     audio = wav_bytes()
     try:
+        status, _, raw, elapsed = request(harness.url + "/v1/emotion/status")
+        status_body = json_body(raw)
+        campaign.add("STATUS-01", "Diagnostic du classifieur ONNX",
+                     status == 200 and status_body.get("session_loaded") is False
+                     and status_body.get("onnx_configured") is False
+                     and "classifications" in status_body and "failures" in status_body,
+                     "HTTP 200, configuration, session et compteurs exposés",
+                     f"HTTP {status}, {raw!r}", elapsed, {"statut_onnx": status_body})
         for index, label in enumerate(RAVDESS_LABELS + RAW_NEUTRAL[1:], 1):
             marked = audio + b"GEEUI-" + label.encode()  # queue RIFF ignorée par wave
             expected = harness.server.parse_label(label)
@@ -382,6 +400,17 @@ def run_live(url, audio_dir):
             raw_by_file = {audio_dir / row["file"]: row.get("ravdess_label", "non_precise") for row in csv.DictReader(stream)}
     else:
         raw_by_file = {}
+    try:
+        status, _, raw, elapsed = request(url + "/v1/emotion/status")
+        preflight = json_body(raw)
+        preflight_ok = status == 200 and preflight.get("session_loaded") is True
+        observed = f"HTTP {status}, session_loaded={preflight.get('session_loaded')}, dernière_erreur={preflight.get('last_error')}"
+    except Exception as exc:
+        preflight, elapsed, preflight_ok = {}, 0.0, False
+        observed = f"{type(exc).__name__}: {exc}"
+    campaign.add("PRE-01", "Préflight du classifieur ONNX", preflight_ok,
+                 "GET /v1/emotion/status : session_loaded=true", observed, elapsed,
+                 {"statut_onnx": preflight})
     for index, (path, expected) in enumerate(rows, 1):
         if not path.is_file() or expected not in EMOTIONS:
             campaign.add(f"LIVE-{index:03d}", str(path), False, "Fichier existant et émotion valide", "Entrée invalide", 0)
@@ -416,7 +445,9 @@ def write_reports(campaign, observations, mode, target, destination):
     if observations:
         accuracy = {e: (sum(1 for a, b, _ in observations if a == e and b == e) / max(1, sum(1 for a, b, _ in observations if a == e))) for e in EMOTIONS}
         accuracy = {e: v for e, v in accuracy.items() if any(a == e for a, _, _ in observations)}
+    preflight_case = next((c for c in campaign.cases if c["id"] == "PRE-01"), None)
     data = {"mode": mode, "cible": target, "date": datetime.now().astimezone().isoformat(),
+            "preflight_onnx": preflight_case.get("details", {}).get("statut_onnx") if preflight_case else None,
             "resume": {"total": len(campaign.cases), "reussis": passed, "echoues": failed},
             "latence_ms": {"moyenne": statistics.mean(latencies) if latencies else None, "p95": percentile95(latencies)},
             "exactitude_par_emotion_robot": accuracy, "exactitude_par_label_ravdess": raw_accuracy or None,
@@ -426,6 +457,8 @@ def write_reports(campaign, observations, mode, target, destination):
     lines = [f"# Rapport de test sidecar — {mode}", "", f"- Date : {data['date']}", f"- Cible : `{target}`",
              f"- **Résultat : {passed}/{len(campaign.cases)} réussis, {failed} échoué(s)**",
              f"- Latence moyenne : {data['latence_ms']['moyenne'] and round(data['latence_ms']['moyenne'], 2)} ms ; p95 : {data['latence_ms']['p95'] and round(data['latence_ms']['p95'], 2)} ms", ""]
+    if preflight_case:
+        lines += ["## Préflight ONNX", "", "```json", json.dumps(data["preflight_onnx"], ensure_ascii=False, indent=2), "```", ""]
     if accuracy is not None:
         lines += ["## Exactitude par émotion robot", ""] + [f"- {e} : {v:.1%}" for e, v in accuracy.items()]
         lines += ["", "## Exactitude par label brut RAVDESS", ""] + [f"- {e} : {v:.1%}" for e, v in raw_accuracy.items()]

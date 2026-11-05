@@ -5,12 +5,10 @@ Unset or blank variables fall back to the defaults below.
 Lemonade stays the Kokoro path. CosyVoice is a second host, off unless set.
 """
 
-import array
 import concurrent.futures
 import io
 import json
 import re
-import math
 import os
 from pathlib import Path
 import subprocess
@@ -153,16 +151,16 @@ def select_providers(available, override=""):
 
 
 def onnx_audio_vote(wav):
-    """Classify PCM WAV with a lazily loaded ONNX session; failures stay neutral."""
+    """Classifie un WAV PCM 16 kHz ; le signal ONNX est toujours batché."""
     model = env("EMO_AUDIO_ONNX")
     if not model:
-        return audio_command_vote(wav)
+        return _fallback_audio(wav)
     try:
         import onnxruntime as ort
         import numpy as np
-    except ImportError:
-        log("onnxruntime/numpy unavailable; falling back to EMO_AUDIO_CMD")
-        return audio_command_vote(wav)
+    except ImportError as exc:
+        _record_onnx_error(exc)
+        return _fallback_audio(wav)
     try:
         with wave.open(io.BytesIO(wav), "rb") as pcm:
             rate = pcm.getframerate()
@@ -170,47 +168,72 @@ def onnx_audio_vote(wav):
                 raise ValueError("expected 16 kHz, mono, 16-bit PCM WAV")
             frames = pcm.getnframes()
             if frames < rate:
+                _onnx_local.source = "fallback"
                 return "neutral", 0.0
-            samples = array.array("h", pcm.readframes(frames))
-        if sys.byteorder != "little":
-            samples.byteswap()
-        signal = np.array([sample / 32768.0 for sample in samples], dtype=np.float32)
+            samples = pcm.readframes(frames)
+        signal = np.frombuffer(samples, dtype="<i2").astype(np.float32) / 32768.0
         session, names = _onnx_session(model)
-        inputs = {names[0]: signal}
+        inputs = {names[0]: signal.reshape(1, -1)}
         if len(names) == 2:
             inputs[names[1]] = np.array(16000, dtype=np.int64)
         features = session.run(None, inputs)[0]
         logits = classify_logits(features)
         confidence, index = softmax(logits)
+        with _onnx_lock:
+            _onnx_stats["classifications"] += 1
+        _onnx_local.source = "onnx"
         return parse_label(_onnx_labels()[index]), confidence
     except Exception as exc:
-        log(f"ONNX audio classification failed: {exc}")
-        return audio_command_vote(wav)
+        _record_onnx_error(exc)
+        return _fallback_audio(wav)
 
 
 _onnx = None
 _onnx_names = None
+_onnx_head = None
 _onnx_lock = threading.Lock()
+_onnx_local = threading.local()
+_onnx_errors = set()
+_onnx_stats = {"classifications": 0, "failures": 0, "last_error": None}
+
+
+def _record_onnx_error(exc):
+    """Rend chaque erreur distincte visible sans saturer le journal."""
+    message = f"{type(exc).__name__}: {exc}"
+    with _onnx_lock:
+        _onnx_stats["failures"] += 1
+        _onnx_stats["last_error"] = message
+        first = message not in _onnx_errors
+        _onnx_errors.add(message)
+    if first:
+        log(f"Échec classification ONNX : {message}\n{traceback.format_exc()}")
+
+
+def _fallback_audio(wav):
+    _onnx_local.source = "fallback"
+    return audio_command_vote(wav)
 
 
 def classify_logits(output):
-    """Use native 9-logit output, or mean-pool [B,T,D] features through the head."""
-    if hasattr(output, "tolist"):
-        output = output.tolist()
-    first = output[0]
-    if first and not isinstance(first[0], (list, tuple)):
-        return first
+    """Logits natifs ou pooling NumPy [B,T,D], puis couche linéaire."""
+    import numpy as np
+    values = np.asarray(output.tolist() if hasattr(output, "tolist") else output)
+    if values.ndim == 2:
+        return values[0]
+    if values.ndim != 3 or not values.shape[1] or not values.shape[2]:
+        raise ValueError(f"forme de sortie ONNX inattendue : {values.shape}")
     if not env("EMO_AUDIO_HEAD"):
         raise ValueError("feature-only ONNX requires EMO_AUDIO_HEAD")
-    features = first
-    pooled = [sum(frame[i] for frame in features) / len(features)
-              for i in range(len(features[0]))]
+    pooled = values[0].mean(axis=0)
     head = _audio_head()
-    return [bias + sum(value * weight for value, weight in zip(pooled, weights))
-            for weights, bias in zip(head[0], head[1])]
+    return np.asarray(head[0]) @ pooled + np.asarray(head[1])
 
 
 def _audio_head():
+    global _onnx_head
+    if _onnx_head is not None:
+        return _onnx_head
+    import numpy as np
     raw = json.loads(Path(env("EMO_AUDIO_HEAD")).read_text())
     weight = raw.get("weight", raw.get("weights", raw.get("Weight")))
     bias = raw.get("bias", raw.get("biases", raw.get("Bias")))
@@ -221,9 +244,15 @@ def _audio_head():
                 bias = value.get("bias", value.get("biases", bias))
     if weight is None or bias is None:
         raise ValueError("EMO_AUDIO_HEAD must contain weight and bias arrays")
-    if len(weight[0]) != len(bias):
-        weight = list(map(list, zip(*weight)))
-    return weight, bias
+    weight = np.asarray(weight, dtype=np.float32)
+    bias = np.asarray(bias, dtype=np.float32)
+    if weight.shape[0] != len(bias):
+        weight = weight.T
+    if weight.shape[0] != len(bias):
+        raise ValueError("dimensions incompatibles dans la tête ONNX")
+    labels = raw.get("labels")
+    _onnx_head = weight, bias, labels
+    return _onnx_head
 
 
 def _onnx_session(model):
@@ -232,22 +261,81 @@ def _onnx_session(model):
         if _onnx is None:
             import onnxruntime as ort
             providers = select_providers(ort.get_available_providers(), env("EMO_ORT_PROVIDERS"))
-            _onnx = ort.InferenceSession(model, providers=providers)
-            _onnx_names = [value.name for value in _onnx.get_inputs()]
-            if len(_onnx_names) not in (1, 2):
+            session = ort.InferenceSession(model, providers=providers)
+            names = [value.name for value in session.get_inputs()]
+            if len(names) not in (1, 2):
                 raise ValueError("expected an audio input and optional sampling-rate input")
+            _onnx, _onnx_names = session, names
         return _onnx, _onnx_names
 
 
 def _onnx_labels():
-    return [label.strip() for label in env("EMO_AUDIO_LABELS").split(",") if label.strip()]
+    override = os.environ.get("EMO_AUDIO_LABELS")
+    if override is not None and override.strip():
+        labels = override.split(",")
+    elif env("EMO_AUDIO_HEAD"):
+        labels = _audio_head()[2]
+        if not labels:
+            labels = ONNX_LABELS
+    else:
+        labels = ONNX_LABELS
+    return [label.strip().rsplit("/", 1)[-1].lower() for label in labels if label.strip()]
 
 
 def softmax(logits):
-    top = max(logits)
-    weights = [math.exp(value - top) for value in logits]
-    index, score = max(enumerate(weights), key=lambda item: item[1])
-    return score / sum(weights), index
+    import numpy as np
+    weights = np.exp(np.asarray(logits) - np.max(logits))
+    index = int(np.argmax(weights))
+    return float(weights[index] / weights.sum()), index
+
+
+def emotion_status():
+    """État observable du classifieur, sans déclencher de chargement."""
+    import importlib.util
+    model = env("EMO_AUDIO_ONNX")
+    head_path = env("EMO_AUDIO_HEAD")
+    available = []
+    version = None
+    if importlib.util.find_spec("onnxruntime"):
+        import onnxruntime as ort
+        version = ort.__version__
+        available = ort.get_available_providers()
+    with _onnx_lock:
+        loaded = _onnx is not None
+        stats = dict(_onnx_stats)
+    head_loaded = _onnx_head is not None
+    labels = None
+    if head_loaded:
+        labels = _onnx_labels()
+    return {
+        "onnx_path": model,
+        "onnx_configured": bool(model),
+        "onnx_file_exists": bool(model) and Path(model).is_file(),
+        "onnxruntime_importable": version is not None,
+        "onnxruntime_version": version,
+        "available_providers": available,
+        "selected_providers": select_providers(available, env("EMO_ORT_PROVIDERS")),
+        "head_path": head_path,
+        "head_loaded": head_loaded,
+        "labels": labels,
+        "session_loaded": loaded,
+        "last_error": stats["last_error"],
+        "classifications": stats["classifications"],
+        "failures": stats["failures"],
+    }
+
+
+def eager_load_onnx():
+    """Charge le backbone au démarrage et journalise explicitement le résultat."""
+    if not env("EMO_AUDIO_ONNX"):
+        return
+    try:
+        session, names = _onnx_session(env("EMO_AUDIO_ONNX"))
+        if env("EMO_AUDIO_HEAD"):
+            _audio_head()
+        log(f"ONNX prêt : {env('EMO_AUDIO_ONNX')}, entrées={names}, fournisseurs={session.get_providers()}")
+    except Exception as exc:
+        _record_onnx_error(exc)
 
 
 def audio_command_vote(wav):
@@ -355,18 +443,22 @@ class Handler(BaseHTTPRequestHandler):
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
         try:
             upstream = executor.submit(self._proxy, self.path.split("?")[0], body, content_type)
-            classified = executor.submit(onnx_audio_vote, audio)
+            def classify():
+                result = onnx_audio_vote(audio)
+                return result, getattr(_onnx_local, "source", "fallback")
+            classified = executor.submit(classify)
             response = upstream.result()
             with response:
                 raw = response.read()
             if not 200 <= response.status < 300:
                 self._raw(response.status, raw, response.headers.get("Content-Type"))
                 return
-            label, confidence = classified.result()
+            (label, confidence), source = classified.result()
             observe(label, confidence, time.time())
             payload = json.loads(raw.decode())
             payload["emotion"] = label
             payload["emotion_confidence"] = confidence
+            payload["emotion_source"] = source
             self._json(response.status, payload)
         finally:
             executor.shutdown(wait=True)
@@ -391,6 +483,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/v1/models":
             with self._proxy(path) as response:
                 self._raw(response.status, response.read(), response.headers.get("Content-Type"))
+            return
+        if path == "/v1/emotion/status":
+            self._json(200, emotion_status())
             return
         if path == "/config":
             self._json(200, config())
@@ -472,6 +567,7 @@ if __name__ == "__main__":
     cfg = config()
     log(f"listen 0.0.0.0:{cfg['bind_port']} advertised {cfg['emo_host']}")
     log(json.dumps(cfg))
+    eager_load_onnx()
     server = ThreadingHTTPServer(("0.0.0.0", cfg["bind_port"]), Handler)
     try:
         server.serve_forever()

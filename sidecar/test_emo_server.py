@@ -41,6 +41,18 @@ class AudioTest(unittest.TestCase):
             self.assertEqual(("neutral", 0.0), server.onnx_audio_vote(self.wav(0.1)))
         model.assert_not_called()
 
+    def test_onnx_receives_batched_float32_signal(self):
+        session = FakeSession()
+        with patch.dict(os.environ, {"EMO_AUDIO_ONNX": "/fake/model.onnx"}, clear=False), \
+             patch.object(server, "_onnx_session", return_value=(session, ["audio"])), \
+             patch.object(server, "classify_logits", return_value=[0, 0, 0, 10]), \
+             patch.object(server, "_onnx_labels", return_value=["angry", "sad", "fear", "happy"]):
+            label, confidence = server.onnx_audio_vote(self.wav())
+        self.assertEqual("happy", label)
+        self.assertGreater(confidence, 0.99)
+        self.assertEqual((1, 16000), session.inputs["audio"].shape)
+        self.assertEqual("float32", str(session.inputs["audio"].dtype))
+
     def test_external_head_pool_and_linear_layer(self):
         head = {"weight": [[1.0, 0.0], [0.0, 1.0]], "bias": [1.0, 2.0]}
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
@@ -48,11 +60,20 @@ class AudioTest(unittest.TestCase):
             path = tmp.name
         try:
             with patch.dict(os.environ, {"EMO_AUDIO_HEAD": path}):
-                self.assertEqual([3.0, 5.0], server.classify_logits(FakeArray([
+                server._onnx_head = None
+                result = server.classify_logits(FakeArray([
                     [[1.0, 2.0], [3.0, 4.0]]
-                ])))
+                ]))
+                self.assertEqual([3.0, 5.0], result.tolist())
+                server._onnx_head = None
         finally:
             os.unlink(path)
+
+
+class FakeSession:
+    def run(self, _, inputs):
+        self.inputs = inputs
+        return [[[[1.0, 2.0], [3.0, 4.0]]]]
 
 
 class FakeArray:
@@ -78,3 +99,20 @@ class ProviderTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StatusTest(unittest.TestCase):
+    def test_head_labels_override_default_and_normalize(self):
+        head = {"weight": [[1.0], [2.0]], "bias": [0.0, 0.0],
+                "labels": ["生气/angry", "快乐/happy"]}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tmp:
+            json.dump(head, tmp)
+            path = tmp.name
+        try:
+            with patch.dict(os.environ, {"EMO_AUDIO_HEAD": path}, clear=False):
+                os.environ.pop("EMO_AUDIO_LABELS", None)
+                server._onnx_head = None
+                self.assertEqual(["angry", "happy"], server._onnx_labels())
+                server._onnx_head = None
+        finally:
+            os.unlink(path)
