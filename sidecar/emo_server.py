@@ -51,7 +51,6 @@ DEFAULTS = {
     "EMO_AUDIO_HEAD": "",
     "EMO_ORT_PROVIDERS": "",
     "EMO_AUDIO_LABELS": ",".join(ONNX_LABELS),
-    "EMO_COOLDOWN_S": "4",
     "EMO_STT_MODEL": "whisper-small",
     "EMO_CHAT_MODEL": "gemma4e-flash-e2b-FLM",
 }
@@ -84,7 +83,6 @@ def config():
         "audio_head": env("EMO_AUDIO_HEAD"),
         "ort_providers": env("EMO_ORT_PROVIDERS"),
         "audio_labels": env("EMO_AUDIO_LABELS"),
-        "cooldown_s": env("EMO_COOLDOWN_S"),
         "stt_model": env("EMO_STT_MODEL"),
         "chat_model": env("EMO_CHAT_MODEL"),
     }

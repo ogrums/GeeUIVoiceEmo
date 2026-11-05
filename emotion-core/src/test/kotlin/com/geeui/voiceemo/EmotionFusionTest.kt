@@ -20,6 +20,16 @@ class EmotionFusionTest {
     }
 
     @Test
+    fun threshold_is_0_45() {
+        // audio-only SAD at 0.75 -> 0.6 * 0.75 = 0.45, exactly on threshold
+        val f = EmotionFusion(clock = { 0L })
+        // Just below: 0.74 * 0.6 = 0.444
+        assertEquals(Emotion.NEUTRAL, f.fuse(Emotion.SAD, 0.74, Emotion.NEUTRAL, false).emotion)
+        // At threshold: 0.75 * 0.6 = 0.45
+        assertEquals(Emotion.SAD, f.fuse(Emotion.SAD, 0.75, Emotion.NEUTRAL, false).emotion)
+    }
+
+    @Test
     fun cooldown_applies_to_non_neutral_only() {
         var now = 10_000L
         val f = EmotionFusion(clock = { now })

@@ -4,7 +4,7 @@ package com.geeui.voiceemo
  * Single source of truth for reaction fusion on the robot.
  * Audio emotion (from the gateway transcription response) weighs 0.6, the LLM
  * reply tag from [EmotionTagParser] weighs 0.4 (confidence 1.0 when a tag was
- * present, 0 otherwise). Best score below 0.5 yields neutral; non-neutral
+ * present, 0 otherwise). Best score below 0.45 yields neutral; non-neutral
  * reactions are suppressed for [cooldownMs] after the last one.
  */
 class EmotionFusion(
@@ -32,6 +32,6 @@ class EmotionFusion(
     companion object {
         const val AUDIO_WEIGHT = 0.6
         const val TEXT_WEIGHT = 0.4
-        const val THRESHOLD = 0.5
+        const val THRESHOLD = 0.45
     }
 }
